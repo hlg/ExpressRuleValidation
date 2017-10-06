@@ -1,0 +1,23 @@
+apply plugin: 'java'
+apply plugin: 'antlr'
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    antlr group: 'org.antlr', name: 'antlr4', version: '4.5.3'
+    compile group: 'org.opensourcebim', name:'ifcplugins', version: '0.0.30'
+    compile group: 'org.opensourcebim', name:'bimserverclientlib', version: '1.5.85'
+}
+
+sourceSets {
+    main{
+        java.srcDir "${project.buildDir}/generated-src/antlr/main/expressrules"
+    }
+}
+
+generateGrammarSource {
+    outputDirectory = new File("${project.buildDir}/generated-src/antlr/main/expressrules")
+    arguments += ["-visitor"]
+}
