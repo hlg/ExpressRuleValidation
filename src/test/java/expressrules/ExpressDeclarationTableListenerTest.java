@@ -6,8 +6,6 @@ import org.antlr.v4.runtime.tree.ParseTreeWalker;
 import org.apache.commons.io.IOUtils;
 import org.junit.Assert;
 import org.junit.Test;
-import expressrules.ExpressLexer;
-import expressrules.ExpressParser;
 
 import java.io.InputStream;
 
@@ -21,8 +19,8 @@ public class ExpressDeclarationTableListenerTest {
         ExpressParser parser = new ExpressParser(tokens);
         ExpressDeclarationTableListener expressDeclarationTableListener = new ExpressDeclarationTableListener();
         ParseTreeWalker.DEFAULT.walk(expressDeclarationTableListener, parser.schema_decl());
-        Assert.assertTrue(expressDeclarationTableListener.declarationTable.containsKey("ifccolumn"));
-        Assert.assertTrue(expressDeclarationTableListener.declarationTable.containsKey("ifcwall"));
-        Assert.assertTrue(expressDeclarationTableListener.declarationTable.containsKey("ifcbuildingelement"));
+        Assert.assertTrue(expressDeclarationTableListener.entityDeclarations.containsKey("ifccolumn"));
+        Assert.assertTrue(expressDeclarationTableListener.entityDeclarations.containsKey("ifcwall"));
+        Assert.assertTrue(expressDeclarationTableListener.entityDeclarations.containsKey("ifcbuildingelement"));
     }
 }

@@ -1,5 +1,6 @@
 apply plugin: 'java'
 apply plugin: 'antlr'
+apply plugin: 'idea'
 
 repositories {
     mavenCentral()
@@ -13,11 +14,18 @@ dependencies {
 
 sourceSets {
     main{
-        java.srcDir "${project.buildDir}/generated-src/antlr/main/expressrules"
+        java.srcDir "${project.buildDir}/generated-src/antlr/main"
     }
 }
 
 generateGrammarSource {
-    outputDirectory = new File("${project.buildDir}/generated-src/antlr/main/expressrules")
+    outputDirectory = new File("${project.buildDir}/generated-src/antlr/main")
     arguments += ["-visitor"]
+}
+
+idea {
+    module {
+        // Marks the already(!) added srcDir as "generated"
+        generatedSourceDirs += file("${project.buildDir}/generated-src/antlr/main")
+    }
 }
