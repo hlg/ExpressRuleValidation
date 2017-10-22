@@ -1,17 +1,5 @@
 package expressrules;
 
-import antlr.ParseTree;
-import org.antlr.v4.runtime.ParserRuleContext;
-import org.antlr.v4.runtime.tree.RuleNode;
-import org.bimserver.emf.IdEObject;
-import org.bimserver.models.ifc2x3tc1.IfcObject;
-import org.bimserver.models.ifc4.*;
-import org.bimserver.models.ifc4.impl.IfcActorRoleImpl;
-import org.eclipse.emf.ecore.EDataType;
-import org.eclipse.emf.ecore.EStructuralFeature;
-
-import java.util.Stack;
-
 public class ExpressRuleVisitor extends ExpressBaseVisitor<Value> {
 
     private EntityAdapter obj;
@@ -30,7 +18,7 @@ public class ExpressRuleVisitor extends ExpressBaseVisitor<Value> {
     @Override
     public Value visitSchema_body(ExpressParser.Schema_bodyContext ctx) {
         log("found " + ctx.declaration().size() + " declarations");
-        return visitChildren(ctx); // TODO check all entity type declarations of object under validation, can also take them from decl table
+        return visitChildren(ctx);
     }
 
     private void log(String s) {
@@ -40,9 +28,17 @@ public class ExpressRuleVisitor extends ExpressBaseVisitor<Value> {
     @Override
     public Value visitDeclaration(ExpressParser.DeclarationContext ctx) {
         // entity_decl |  type_decl |  subtype_constraint_decl |  function_decl |  procedure_decl ;
-        boolean entityDeclWithObjClass = ctx.entity_decl().entity_head().IDENT().getText().equals(obj.getExpressClassName());
-        return entityDeclWithObjClass ? visit(ctx.entity_decl()) : null;
+        // TODO check rules in all entity declarations of object under validation, can also take them from decl table
+        // TODO check rules of all types that are used for attributes of the entity
         // TODO plus function declarations, they are in decl table  (type declarations needed?)
+        // no subtype constraints or procudure declarations in IFC4
+        if(obj!=null) {
+            boolean entityDeclWithObjClass = ctx.entity_decl().entity_head().IDENT().getText().equals(obj.getExpressClassName());
+            return entityDeclWithObjClass ? visit(ctx.entity_decl()) : null;
+        } else {
+            return visitChildren(ctx);
+        }
+
     }
 
     @Override
@@ -83,7 +79,7 @@ public class ExpressRuleVisitor extends ExpressBaseVisitor<Value> {
         Value eval1 = visit(ctx.simple_expression(0));
         if (ctx.simple_expression().size()>1) {
             Value eval2 = visit(ctx.simple_expression(1));
-            if(ctx.rel_op_extended().getText().toLowerCase().equals("in")) return eval1.in(eval2);  // simple val in aggregation
+            if (ctx.rel_op_extended().getText().toLowerCase().equals("in")) return eval1.in(eval2);  // simple val in aggregation
             if (ctx.rel_op_extended().getText().toLowerCase().equals("like")) throw new RuntimeException("not implemented");   // not used in IFC4 express
             if (ctx.rel_op_extended().rel_op().ASSIGN()!=null) return eval1.eq(eval2);
             else if (ctx.rel_op_extended().rel_op().LT()!=null)  return eval1.lt(eval2);
@@ -133,7 +129,7 @@ public class ExpressRuleVisitor extends ExpressBaseVisitor<Value> {
     @Override
     public Value visitSimple_factor(ExpressParser.Simple_factorContext ctx) {
         // aggregate_initializer | interval | query_expression | (unary_op? ((LPAREN expression RPAREN) | primary)) | entity_constructor | enumeration_reference ;
-        return visit(ctx.primary());  // TODO alternatives
+        return ctx.primary()!= null ? visit(ctx.primary()) : null;  // TODO alternatives
     }
 
     @Override
@@ -159,13 +155,39 @@ public class ExpressRuleVisitor extends ExpressBaseVisitor<Value> {
 
     @Override
     public Value visitQualifiable_factor(ExpressParser.Qualifiable_factorContext ctx) {
-        // attribute_ref | constant_factor | function_call | population | general_ref    // no cust constants in IFC4
-        return visit(ctx.attribute_ref()); // TODO alternatives
+        // attribute_ref | constant_factor | function_call | population | general_ref    // no custom constants in IFC4
+        if(ctx.population()!=null) visit(ctx.population());
+        return ( ctx.attribute_ref()!= null) ? visit(ctx.attribute_ref()) : null; // TODO alternatives
     }
+
+    @Override
+    public Value visitPopulation(ExpressParser.PopulationContext ctx) {
+        log("found population context, currently unhandled: " + ctx.entity_ref().IDENT().getText());
+        return null;
+    }
+
+
+
     @Override
     public Value visitQualifier(ExpressParser.QualifierContext ctx) {
         // attribute_qualifier | group_qualifier | index_qualifier;
-        return visit(ctx.attribute_qualifier()); // TODO alternatives
+        return visitChildren(ctx);
+    }
+
+    @Override
+    public Value visitGroup_qualifier(ExpressParser.Group_qualifierContext ctx) {
+        // TODO: check whether group qualifier can be ignored (no ambiguous cases in IFC4)
+        return null;
+    }
+
+    @Override
+    public Value visitIndex_qualifier(ExpressParser.Index_qualifierContext ctx) {
+        Value start = visit(ctx.index_1().index().numeric_expression());
+        if (ctx.index_2()!=null){
+            Value end = visit(ctx.index_2().index().numeric_expression());
+            return currentScope.resolveIndex(start, end);
+        }
+        return currentScope.resolveIndex(start, start);
     }
 
     @Override

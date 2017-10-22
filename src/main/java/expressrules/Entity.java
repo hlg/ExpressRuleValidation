@@ -84,4 +84,9 @@ public class Entity extends Value {
 
     }
 
+    @Override
+    public Value resolveIndex(Value start, Value end) {
+        throw new WrongTypeError();
+    }
+
 }

@@ -34,12 +34,16 @@ public abstract class Value  {
 
     public abstract Value neqi(Value eval2);
 
-    public static Value create(Object o) {
-        if (o instanceof Collection) return new Aggregate((Collection)o);      // TODO: extend Collection implement Value
-        if (o instanceof EntityAdapter) return new Entity((EntityAdapter)o);   // TODO: extend IdEObject implement Value (adapter)
-        return null; //TODO rest if needed
+    public static Value create(Object elem) {
+        if(elem instanceof Collection) return new Aggregate((Collection) elem);
+        if(elem instanceof String || elem instanceof Boolean) return new Simple((Comparable)elem);
+        if(elem instanceof Number) return new Simple(((Number)elem).doubleValue());
+        if(elem instanceof EntityAdapter) return new Entity((EntityAdapter) elem);
+        throw new WrongTypeError(); //TODO something missing?
     }
 
     public abstract Value resolveRef(String refName);
+
+    public abstract Value resolveIndex(Value start, Value end);
 }
 

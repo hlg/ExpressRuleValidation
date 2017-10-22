@@ -116,7 +116,17 @@ public class Simple extends Value implements Comparable<Simple>  {
         throw  new WrongTypeError();
     }
 
+    @Override
+    public Value resolveIndex(Value start, Value end) {
+        throw new WrongTypeError();
+    }
+
     public boolean isDouble() {
         return value instanceof Double;
+    }
+
+    public int getIntegerValue() {
+        if (value instanceof Number) return ((Number)value).intValue();
+        else throw new WrongTypeError();
     }
 }

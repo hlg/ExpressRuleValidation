@@ -18,9 +18,7 @@ public class Aggregate extends Value {
     public Aggregate(Collection collection) {
         value = new ArrayList<Value>();
         for(Object elem : collection){
-            if(elem instanceof String || elem instanceof Boolean) value.add(new Simple((Comparable)elem));
-            if(elem instanceof Number) value.add(new Simple(((Number)elem).doubleValue()));
-            if(elem instanceof EntityAdapter) value.add(new Entity((EntityAdapter) elem));
+            value.add(Value.create(elem));
         }
     }
 
@@ -97,6 +95,14 @@ public class Aggregate extends Value {
     @Override
     public Value resolveRef(String refName) {
         throw new WrongTypeError();
+    }
+
+    @Override
+    public Value resolveIndex(Value start, Value end) {
+        if(!(start instanceof Simple) || !(end instanceof Simple)) throw new WrongTypeError();
+        int s = ((Simple) start).getIntegerValue();
+        int e = ((Simple) start).getIntegerValue();
+        return (s==e) ?  value.get(s) : new Aggregate(value.subList(s,e));
     }
 
     public void addValue(Value value) {

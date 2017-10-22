@@ -3,6 +3,8 @@ package expressrules;
 import org.bimserver.emf.IdEObject;
 import org.eclipse.emf.ecore.EStructuralFeature;
 
+import java.util.Collection;
+
 public class BIMserverEntityAdapter implements EntityAdapter {
 
     IdEObject entity;
@@ -15,7 +17,11 @@ public class BIMserverEntityAdapter implements EntityAdapter {
     public Value resolveReference(String refName) {
         EStructuralFeature feature = entity.eClass().getEStructuralFeature(refName);
         Object resolved = entity.eGet(feature, true);
-        return new Entity(new BIMserverEntityAdapter((IdEObject) resolved)); // TODO: check reference/attribute, may return POJO
+        if((resolved instanceof IdEObject) && ((IdEObject)resolved).eClass().getEAnnotation("wrapped")!=null) {
+            EStructuralFeature unwrap =  ((IdEObject)resolved).eClass().getEStructuralFeature("wrappedValue");
+            resolved = ((IdEObject)resolved).eGet(unwrap, true);
+        }
+        return Value.create(resolved);
     }
 
     @Override
