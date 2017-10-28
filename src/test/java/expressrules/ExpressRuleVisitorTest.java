@@ -9,11 +9,12 @@ import org.bimserver.emf.Schema;
 import org.bimserver.ifc.step.deserializer.Ifc2x3tc1StepDeserializer;
 import org.bimserver.models.ifc2x3tc1.Ifc2x3tc1Package;
 import org.bimserver.models.ifc4.IfcRoot;
-import org.junit.Before;
 import org.junit.Test;
 
 import java.io.*;
 import java.nio.file.Paths;
+import java.util.Arrays;
+import java.util.Collection;
 
 public class ExpressRuleVisitorTest {
 
@@ -50,15 +51,29 @@ public class ExpressRuleVisitorTest {
 
     @Test
     public void testEntityAccessAttribute() throws Exception {
-        ExpressParser parser=getParserFor("SCHEMA entityAccess; ENTITY test; check: BOOLEAN; WHERE valid: check=true; END_ENTITY; END_SCHEMA;");
-        Value result = new ExpressRuleVisitor(new TestEntity()).visit(parser.schema_decl());
+        ExpressParser parser=getParserFor("SCHEMA entityAccess; ENTITY test1; check: BOOLEAN; WHERE valid: check=true; END_ENTITY; END_SCHEMA;");
+        Value result = new ExpressRuleVisitor(new Test1Entity()).visit(parser.schema_decl());
         assert (Boolean)((Simple)result).value;
     }
 
     @Test
     public void testEntityAccessReference() throws Exception {
-        ExpressParser parser=getParserFor("SCHEMA entityAccess; ENTITY test; check: BOOLEAN; END_ENTITY; ENTITY test2; ref: test; WHERE valid: ref.check=true; END_ENTITY; END_SCHEMA;");
+        ExpressParser parser=getParserFor("SCHEMA entityAccess; ENTITY test1; check: BOOLEAN; END_ENTITY; ENTITY test2; ref: test; WHERE valid: ref.check=true; END_ENTITY; END_SCHEMA;");
         Value result = new ExpressRuleVisitor(new Test2Entity()).visit(parser.schema_decl());
+        assert (Boolean)((Simple)result).value;
+    }
+
+    @Test
+    public void testAggregateAccessIndex() throws Exception {
+        ExpressParser parser=getParserFor("SCHEMA entityAccess; ENTITY test3; check: LIST of INTEGER; WHERE valid: check[1]=1; END_ENTITY; END_SCHEMA;");
+        Value result = new ExpressRuleVisitor(new Test3Entity()).visit(parser.schema_decl());
+        assert (Boolean)((Simple)result).value;
+    }
+
+    @Test
+    public void testFunctions() throws Exception{
+        ExpressParser parser=getParserFor("SCHEMA functions; ENTITY test4; WHERE valid: 1=ABS(COS(PI)); END_ENTITY; END_SCHEMA;");
+        Value result = new ExpressRuleVisitor(new Test4Entity()).visit(parser.schema_decl());
         assert (Boolean)((Simple)result).value;
     }
 
@@ -85,9 +100,22 @@ public class ExpressRuleVisitorTest {
     }
 
     @Test
+    public void testCheckIfc4Scratch() throws Exception {
+
+    }
+
+    @Test
     public void testResultAggregation(){}
 
-    private class TestEntity implements EntityAdapter {
+    private abstract class TestEntity implements EntityAdapter {
+        @Override
+        public Collection<String> getTypes() { return null; }
+
+        @Override
+        public Collection<Entity> getUsages(String type, String attribute) { return null; }
+    }
+
+    private class Test1Entity extends TestEntity {
         @Override
         public Value resolveReference(String refName) {
             assert "check".equals(refName);
@@ -96,21 +124,52 @@ public class ExpressRuleVisitorTest {
 
         @Override
         public String getExpressClassName() {
-            return "test";
+            return "test1";
         }
+
     }
 
-    private class Test2Entity implements EntityAdapter {
+    private class Test2Entity extends TestEntity {
 
         @Override
         public Value resolveReference(String refName) {
             assert "ref".equals(refName);
-            return new Entity(new TestEntity());
+            return new Entity(new Test1Entity());
         }
 
         @Override
         public String getExpressClassName() {
             return "test2";
+        }
+    }
+
+    private class Test3Entity extends TestEntity {
+
+        @Override
+        public Value resolveReference(String refName) {
+            assert "check".equals(refName);
+            return new Aggregate(Arrays.asList(0, 1, 3));
+        }
+
+        @Override
+        public String getExpressClassName() {
+            return "test3";
+        }
+    }
+    private class Test4Entity extends TestEntity {
+
+        @Override
+        public Value resolveReference(String refName) {
+            if("check2".equals(refName)) return new Simple(2.);
+            else {
+                assert ("check1".equals(refName));
+                return new Simple(-2.);
+            }
+        }
+
+        @Override
+        public String getExpressClassName() {
+            return "test4";
         }
     }
 }

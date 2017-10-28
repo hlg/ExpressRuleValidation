@@ -1,9 +1,13 @@
 package expressrules;
 
 import org.bimserver.emf.IdEObject;
+import org.eclipse.emf.ecore.EClass;
+import org.eclipse.emf.ecore.EObject;
 import org.eclipse.emf.ecore.EStructuralFeature;
 
+import java.util.ArrayList;
 import java.util.Collection;
+import java.util.Iterator;
 
 public class BIMserverEntityAdapter implements EntityAdapter {
 
@@ -27,5 +31,31 @@ public class BIMserverEntityAdapter implements EntityAdapter {
     @Override
     public String getExpressClassName() {
         return entity.eClass().getName();
+    }
+
+    @Override
+    public Collection<String> getTypes() {
+        Collection<String> result = new ArrayList<String>();
+        for ( EClass superType : entity.eClass().getESuperTypes()){
+            result.add(superType.getName());
+        }
+        return result;
+    }
+
+    @Override
+    public Collection<Entity> getUsages(String type, String attribute) {
+        Collection<Entity> result = new ArrayList<Entity>();
+        Iterator<EObject> otherEntities = entity.eClass().eResource().getAllContents();
+        while(otherEntities.hasNext()){
+            EObject otherEntity = otherEntities.next();
+            if(type.equals(otherEntity.eClass().getName())){
+                EStructuralFeature feature = otherEntity.eClass().getEStructuralFeature(attribute);
+                if (otherEntity.eGet(feature, true).equals(entity)) {
+                    Entity usingEntity = new Entity(new BIMserverEntityAdapter((IdEObject) otherEntity));
+                    result.add(usingEntity);
+                }
+            }
+        }
+        return result;
     }
 }

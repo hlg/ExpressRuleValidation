@@ -216,7 +216,7 @@ query_expression : 'query' LPAREN variable_id LTSTAR aggregate_source BAR logica
 aggregate_source : simple_expression ;
 logical_expression : expression ;
 primary : literal | qualifiable_factor qualifier*;
-literal :  real_literal | logical_literal | integer_literal | STRING ;
+literal :  real_literal | logical_literal | integer_literal | STRING ;  // binary_literal is missing, but not appearing in IFC
 real_literal : DIGIT+ '.' DIGIT* ('e' (PLUS|MINUS)? DIGIT+)? ;
 integer_literal : DIGIT+ ;
 logical_literal : 'false' | 'true' | 'unknown' ;
@@ -225,7 +225,7 @@ attribute_ref : IDENT ;
 constant_factor : built_in_constant | constant_ref ;
 built_in_constant : 'const_e' | 'pi' | 'self' | QUESTION | STAR ;
 constant_ref : IDENT ;
-function_call : (built_in_function | function_ref ) actual_parameter_list? ;
+function_call : (built_in_function | function_ref ) actual_parameter_list? ;  // TODO: this seems to be wrong, parans from parameter list should go here, except when parameterless calls are not allowed or ar done without parans
 built_in_function : 'abs' | 'acos' | 'asin' | 'atan' | 'blength' | 'cos' | 'exists' | 'exp' | 'format' | 'hibound' | 'hiindex' | 'length' | 'lobound' | 'loindex' | 'log' | 'log2' | 'log10' | 'nvl' | 'odd' | 'rolesof' | 'sin' | 'sizeof' | 'sqrt' | 'tan' | 'typeof' | 'usedin' | 'value' | 'value_in' | 'value_unique' ; 
 function_ref : IDENT ;
 actual_parameter_list : LPAREN parameter (COMMA parameter)* RPAREN;

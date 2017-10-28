@@ -18,7 +18,7 @@ public class Aggregate extends Value {
     public Aggregate(Collection collection) {
         value = new ArrayList<Value>();
         for(Object elem : collection){
-            value.add(Value.create(elem));
+            value.add((elem instanceof Value) ? (Value) elem : Value.create(elem));
         }
     }
 

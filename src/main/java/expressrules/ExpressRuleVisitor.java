@@ -1,13 +1,18 @@
 package expressrules;
 
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Stack;
+
 public class ExpressRuleVisitor extends ExpressBaseVisitor<Value> {
 
     private EntityAdapter obj;
-    private Value currentScope;
+    private Value qualifierScope ;
+
+    private Stack<Aggregate> stack = new Stack<Aggregate>();
 
     public ExpressRuleVisitor(EntityAdapter obj) {
         this.obj = obj;
-        this.currentScope = new Entity(obj);
     }
 
     @Override
@@ -146,18 +151,76 @@ public class ExpressRuleVisitor extends ExpressBaseVisitor<Value> {
     public Value visitPrimary(ExpressParser.PrimaryContext ctx) {
         // primary : literal | qualifiable_factor qualifier*;
         if(ctx.literal()!= null) return visit(ctx.literal());
-        currentScope = visit(ctx.qualifiable_factor());
+        qualifierScope = new Entity(obj);
+        qualifierScope = visit(ctx.qualifiable_factor());
         for (ExpressParser.QualifierContext qualifier : ctx.qualifier()){
-            currentScope = visit(qualifier);
+            qualifierScope = visit(qualifier);
         }
-        return currentScope;
+        return qualifierScope;
+    }
+
+    @Override
+    public Value visitConstant_factor(ExpressParser.Constant_factorContext ctx) {
+        // built_in_constant | constant_ref
+        return visitChildren(ctx);
+    }
+
+    @Override
+    public Value visitBuilt_in_constant(ExpressParser.Built_in_constantContext ctx) {
+        if("const_e".equals(ctx.getText())) return new Simple(Math.E);
+        else if ("pi".equals(ctx.getText())) return new Simple(Math.PI);
+        else if ("self".equals(ctx.getText())) return null;
+        else if (ctx.STAR()!=null || ctx.QUESTION() != null) log("found * or ? constant, currently unhandled"); return null;
+    }
+
+    @Override
+    public Value visitConstant_ref(ExpressParser.Constant_refContext ctx) {
+        log("found constant reference, currently unhandled: " + ctx.IDENT());
+        return null;
     }
 
     @Override
     public Value visitQualifiable_factor(ExpressParser.Qualifiable_factorContext ctx) {
         // attribute_ref | constant_factor | function_call | population | general_ref    // no custom constants in IFC4
-        if(ctx.population()!=null) visit(ctx.population());
-        return ( ctx.attribute_ref()!= null) ? visit(ctx.attribute_ref()) : null; // TODO alternatives
+        return visitChildren(ctx);
+    }
+
+    @Override
+    public Value visitFunction_call(ExpressParser.Function_callContext ctx) {
+        stack.push( (Aggregate) visit(ctx.actual_parameter_list()));
+        return visit(ctx.built_in_function()); // TODO function_ref
+    }
+
+    @Override
+    public Value visitActual_parameter_list(ExpressParser.Actual_parameter_listContext ctx) {
+        List<Value> parameters = new ArrayList<Value>();
+        for (ExpressParser.ParameterContext parameter : ctx.parameter()){
+            parameters.add(visit(parameter.expression()));
+        }
+        return new Aggregate(parameters);
+    }
+
+    @Override
+    public Value visitBuilt_in_function(ExpressParser.Built_in_functionContext ctx) {
+        return Functions.valueOf(ctx.getText().toUpperCase()).evaluate(stack.pop().value);
+    }
+
+
+    @Override
+    public Value visitFunction_ref(ExpressParser.Function_refContext ctx) {
+        return null; // TODO:
+    }
+
+    @Override
+    public Value visitVariable_ref(ExpressParser.Variable_refContext ctx) {
+        log("found variable ref " + ctx.IDENT().getText()); // TODO
+        return null;
+    }
+
+    @Override
+    public Value visitParameter_ref(ExpressParser.Parameter_refContext ctx) {
+        log("found parameter ref " + ctx.IDENT().getText()); // TODO
+        return null;
     }
 
     @Override
@@ -177,6 +240,7 @@ public class ExpressRuleVisitor extends ExpressBaseVisitor<Value> {
     @Override
     public Value visitGroup_qualifier(ExpressParser.Group_qualifierContext ctx) {
         // TODO: check whether group qualifier can be ignored (no ambiguous cases in IFC4)
+        log("group qalifier found, not handeled: " + ctx.getText()); // should pop and push scope
         return null;
     }
 
@@ -185,9 +249,9 @@ public class ExpressRuleVisitor extends ExpressBaseVisitor<Value> {
         Value start = visit(ctx.index_1().index().numeric_expression());
         if (ctx.index_2()!=null){
             Value end = visit(ctx.index_2().index().numeric_expression());
-            return currentScope.resolveIndex(start, end);
+            return qualifierScope.resolveIndex(start, end);
         }
-        return currentScope.resolveIndex(start, start);
+        return qualifierScope.resolveIndex(start, start);
     }
 
     @Override
@@ -197,7 +261,7 @@ public class ExpressRuleVisitor extends ExpressBaseVisitor<Value> {
 
     @Override
     public Value visitAttribute_ref(ExpressParser.Attribute_refContext ctx) {
-        Value resolved = currentScope.resolveRef(ctx.IDENT().getText());
+        Value resolved = qualifierScope.resolveRef(ctx.IDENT().getText());
         log("resolved reference " + ctx.IDENT().getText() + " - result = " + resolved.toString());
         return resolved;
     }

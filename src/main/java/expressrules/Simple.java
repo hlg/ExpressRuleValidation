@@ -10,7 +10,7 @@ public class Simple extends Value implements Comparable<Simple>  {
     }
 
     private boolean allowedType(Object value) {
-        return value instanceof Boolean || value instanceof Double || value instanceof String;
+        return value instanceof Boolean || value instanceof Double || value instanceof Integer || value instanceof String;
     }
 
     public boolean getBoolean(){
@@ -127,6 +127,15 @@ public class Simple extends Value implements Comparable<Simple>  {
 
     public int getIntegerValue() {
         if (value instanceof Number) return ((Number)value).intValue();
+        else throw new WrongTypeError();
+    }
+    public double getDoubleValue() {
+        if (value instanceof Number) return ((Number)value).doubleValue();
+        else throw new WrongTypeError();
+    }
+
+    public String getStringValue() {
+        if (value instanceof String) return (String)value;
         else throw new WrongTypeError();
     }
 }

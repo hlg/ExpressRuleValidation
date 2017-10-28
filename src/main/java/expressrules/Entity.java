@@ -1,5 +1,8 @@
 package expressrules;
 
+import java.util.Collection;
+import java.util.Objects;
+
 public class Entity extends Value {
 
     EntityAdapter value;
@@ -9,37 +12,39 @@ public class Entity extends Value {
     }
 
     @Override
-    public Value eq(Value eval2) {
-        return null;   // tODO value comparison
+    public Value eq(Value other) {
+        if(!(other instanceof Entity)) throw new WrongTypeError();
+        return new Simple(Objects.deepEquals(this.value, ((Entity)other).value));
     }
 
     @Override
-    public Value lt(Value eval2) {
+    public Value lt(Value other) {
         throw new WrongTypeError();
     }
 
     @Override
-    public Value gt(Value eval2) {
+    public Value gt(Value other) {
         throw new WrongTypeError();
     }
 
     @Override
-    public Value le(Value eval2) {
+    public Value le(Value other) {
         throw new WrongTypeError();
     }
 
     @Override
-    public Value ge(Value eval2) {
+    public Value ge(Value other) {
         throw new WrongTypeError();
     }
 
     @Override
-    public Value neq(Value eval2) {
-        return null; // TODO value comparison
+    public Value neq(Value other) {
+        if(!(other instanceof Entity)) throw new WrongTypeError();
+        return new Simple(!Objects.deepEquals(this.value, ((Entity)other).value));
     }
 
     @Override
-    public Value in(Value eval2) {
+    public Value in(Value other) {
         return null; // TODO
     }
 
@@ -69,13 +74,15 @@ public class Entity extends Value {
     }
 
     @Override
-    public Value eqi(Value eval2) {
-        return null; // TODO instance comparison
+    public Value eqi(Value other) {
+        if(!(other instanceof Entity)) throw new WrongTypeError();
+        return new Simple(this.value==((Entity)other).value);
     }
 
     @Override
-    public Value neqi(Value eval2) {
-        return null; // TODO instance comparison
+    public Value neqi(Value other) {
+        if(!(other instanceof Entity)) throw new WrongTypeError();
+        return new Simple(this.value!=((Entity)other).value);
     }
 
     @Override
@@ -89,4 +96,11 @@ public class Entity extends Value {
         throw new WrongTypeError();
     }
 
+    public Collection<String> getTypes() {
+        return value.getTypes();
+    }
+
+    public Collection<Entity> getUsages(String type, String attribute) {
+        return value.getUsages(type, attribute);
+    }
 }
