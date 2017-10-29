@@ -1,4 +1,3 @@
-apply plugin: 'java'
 apply plugin: 'antlr'
 apply plugin: 'idea'
 apply plugin: 'groovy'
@@ -11,7 +10,8 @@ dependencies {
     antlr group: 'org.antlr', name: 'antlr4', version: '4.5.3'
     compile group: 'org.opensourcebim', name:'ifcplugins', version: '0.0.30'
     compile group: 'org.opensourcebim', name:'bimserverclientlib', version: '1.5.85'
-    testCompile group: 'org.codehaus.groovy', name:'groovy-all', version: '2.4.10'
+    compile group: 'org.codehaus.groovy', name:'groovy-all', version: '2.4.10'
+    testCompile 'junit:junit:4.12'
 }
 
 sourceSets {

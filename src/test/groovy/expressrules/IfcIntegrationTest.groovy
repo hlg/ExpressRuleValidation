@@ -1,7 +1,5 @@
 package expressrules
 
-import junit.framework.TestCase
-import org.antlr.v4.runtime.ANTLRInputStream
 import org.antlr.v4.runtime.CommonTokenStream
 import org.antlr.v4.runtime.tree.ParseTreeWalker
 import org.apache.commons.io.IOUtils
@@ -11,10 +9,12 @@ import org.bimserver.emf.Schema
 import org.bimserver.ifc.step.deserializer.Ifc2x3tc1StepDeserializer
 import org.bimserver.models.ifc2x3tc1.Ifc2x3tc1Package
 import org.bimserver.models.ifc4.Ifc4Factory
+import org.bimserver.models.ifc4.IfcCShapeProfileDef
 import org.bimserver.models.ifc4.IfcOccupant
 import org.bimserver.models.ifc4.IfcOccupantTypeEnum
 import org.bimserver.models.ifc4.IfcRoot
 import org.junit.Test
+
 
 import java.nio.file.Paths
 
@@ -38,7 +38,8 @@ public class IfcIntegrationTest {
         EntityAdapter ifcObject = new BIMserverEntityAdapter(profile);
         */
 
-        IfcOccupant ifcOccupant = Ifc4Factory.eINSTANCE.createIfcOccupant();
+        IfcCShapeProfileDef profile = [depth:30, width:10, girth:5, wallThickness:1] as IfcCShapeProfileDef;
+        IfcOccupant ifcOccupant =  Ifc4Factory.eINSTANCE.createIfcOccupant();
         ifcOccupant.setPredefinedType(IfcOccupantTypeEnum.TENANT);
         EntityAdapter ifcObject = new BIMserverEntityAdapter(ifcOccupant);
 
@@ -51,14 +52,8 @@ public class IfcIntegrationTest {
 
     private ExpressParser getIfc4Parser() throws IOException {
         InputStream schema = getClass().getClassLoader().getResourceAsStream("IFC4_ADD2.exp");
-        ExpressLexer lexer = new ExpressLexer(new ANTLRInputStream(IOUtils.toString(schema)){
-            @Override
-            public int LA(int i) {
-                int c = super.LA(i);
-                if(c<0) return c;
-                return Character.toLowerCase(c);
-            }
-        }); // .toLowerCase()
+        def stream = new CaseInsensitiveANTLRInputStream(IOUtils.toString(schema))
+        ExpressLexer lexer = new ExpressLexer(stream); // .toLowerCase()
         CommonTokenStream tokens = new CommonTokenStream(lexer);
         return new ExpressParser(tokens);
     }

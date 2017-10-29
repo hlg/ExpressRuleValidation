@@ -36,7 +36,7 @@ public class ExpressRuleVisitorTest {
 
     @Test
     public void testEntityAccessReference() throws Exception {
-        Schema_declContext schema = getSchemaFor("SCHEMA entityAccess; ENTITY test1; check: BOOLEAN; END_ENTITY; ENTITY test2; ref: test; WHERE valid: ref.check=true; END_ENTITY; END_SCHEMA;");
+        Schema_declContext schema = getSchemaFor("SCHEMA entityyAccess; ENTITY test1; check: BOOLEAN; END_ENTITY; ENTITY test2; ref: test; WHERE valid: ref.check=true; END_ENTITY; END_SCHEMA;");
         Value result = new ExpressRuleVisitor(new Test2Entity(), getEntityDeclarationTableFor(schema), new HashMap<String, List<String>>()).visit(schema);
         assert (Boolean)((Simple)result).value;
     }
@@ -56,6 +56,13 @@ public class ExpressRuleVisitorTest {
     }
 
     @Test
+    public void testEnumReference() throws Exception{
+        Schema_declContext schema = getSchemaFor("SCHEMA functions; TYPE names = ENUMERATION OF (ANNA, BOB, CHARLY); END_TYPE; ENTITY test5; name: names; WHERE valid: name=names.BOB; END_ENTITY; END_SCHEMA;");
+        Value result = new ExpressRuleVisitor(new Test5Entity(), [test5: schema.schema_body().declaration(1).entity_decl()], [names: ["ANNA", "BOB", "CHARLY"]]).visit(schema);
+        assert ((Simple)result).getBoolean();
+    }
+
+    @Test
     public void testCheckIfc4Scratch() throws Exception {
 
     }
@@ -64,7 +71,7 @@ public class ExpressRuleVisitorTest {
     public void testResultAggregation(){}
 
     private Schema_declContext getSchemaFor(String expressCode) throws IOException {
-        ExpressLexer lexer = new ExpressLexer(new ANTLRInputStream(expressCode.toLowerCase()));
+        ExpressLexer lexer = new ExpressLexer(new CaseInsensitiveANTLRInputStream(expressCode));
         CommonTokenStream tokens = new CommonTokenStream(lexer);
         return new ExpressParser(tokens).schema_decl();
     }
@@ -129,10 +136,18 @@ public class ExpressRuleVisitorTest {
         private Test4Entity(){
             super();
             expressClassName = "test4";
-            attributes.put("check2", new Simple(2.));
-            attributes.put("check1", new Simple(-2.));
+            attributes.put("check2", new Simple(2 as double));
+            attributes.put("check1", new Simple(-2 as double));
         }
 
+    }
+
+    private class Test5Entity extends TestEntity {
+        private Test5Entity(){
+            super();
+            expressClassName = "test5";
+            attributes.put("name", new Simple("BOB"));
+        }
     }
 }
 
