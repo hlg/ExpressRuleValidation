@@ -13,27 +13,15 @@ import org.junit.Test;
 
 import java.io.*;
 import java.nio.file.Paths;
-import java.util.Arrays;
-import java.util.Collection;
+import java.util.*;
+
+import expressrules.ExpressParser.Schema_declContext;
+import expressrules.ExpressParser.Entity_declContext;
 
 public class ExpressRuleVisitorTest {
 
-    private ExpressParser getIfc4Parser() throws IOException {
-        InputStream schema = getClass().getClassLoader().getResourceAsStream("IFC4_ADD2.exp");
-        ExpressLexer lexer = new ExpressLexer(new ANTLRInputStream(IOUtils.toString(schema).toLowerCase()));
-        CommonTokenStream tokens = new CommonTokenStream(lexer);
-        return new ExpressParser(tokens);
-    }
-
-    private ExpressParser getParserFor(String expressCode) throws IOException {
-        ExpressLexer lexer = new ExpressLexer(new ANTLRInputStream(expressCode.toLowerCase()));
-        CommonTokenStream tokens = new CommonTokenStream(lexer);
-        return new ExpressParser(tokens);
-    }
-
-
     @Test
-    public void testRuleVisitor() throws Exception {
+    public void testIfc4Coverage() throws Exception {
         new ExpressRuleVisitor(null).visit(getIfc4Parser().schema_decl());
     }
 
@@ -44,41 +32,40 @@ public class ExpressRuleVisitorTest {
 
     @Test
     public void testSimpleExpression() throws Exception {
-        ExpressParser parser= getParserFor("SCHEMA expressions; ENTITY dummy; WHERE valid: 1+1*3=4; END_ENTITY; END_SCHEMA;");
-        Value result = new ExpressRuleVisitor(null).visit(parser.schema_decl());
+        Schema_declContext schema = getSchemaFor("SCHEMA expressions; ENTITY dummy; WHERE valid: 1+1*3=4; END_ENTITY; END_SCHEMA;");
+        Value result = new ExpressRuleVisitor(null).visit(schema);
         assert (Boolean)((Simple)result).value;
     }
 
     @Test
     public void testEntityAccessAttribute() throws Exception {
-        ExpressParser parser=getParserFor("SCHEMA entityAccess; ENTITY test1; check: BOOLEAN; WHERE valid: check=true; END_ENTITY; END_SCHEMA;");
-        Value result = new ExpressRuleVisitor(new Test1Entity()).visit(parser.schema_decl());
+        Schema_declContext schema = getSchemaFor("SCHEMA entityAccess; ENTITY test1; check: BOOLEAN; WHERE valid: check=true; END_ENTITY; END_SCHEMA;");
+        Value result = new ExpressRuleVisitor(new Test1Entity(), getEntityDeclarationTableFor(schema)).visit(schema);
         assert (Boolean)((Simple)result).value;
     }
 
     @Test
     public void testEntityAccessReference() throws Exception {
-        ExpressParser parser=getParserFor("SCHEMA entityAccess; ENTITY test1; check: BOOLEAN; END_ENTITY; ENTITY test2; ref: test; WHERE valid: ref.check=true; END_ENTITY; END_SCHEMA;");
-        Value result = new ExpressRuleVisitor(new Test2Entity()).visit(parser.schema_decl());
+        Schema_declContext schema = getSchemaFor("SCHEMA entityAccess; ENTITY test1; check: BOOLEAN; END_ENTITY; ENTITY test2; ref: test; WHERE valid: ref.check=true; END_ENTITY; END_SCHEMA;");
+        Value result = new ExpressRuleVisitor(new Test2Entity(), getEntityDeclarationTableFor(schema)).visit(schema);
         assert (Boolean)((Simple)result).value;
     }
 
     @Test
     public void testAggregateAccessIndex() throws Exception {
-        ExpressParser parser=getParserFor("SCHEMA entityAccess; ENTITY test3; check: LIST of INTEGER; WHERE valid: check[1]=1; END_ENTITY; END_SCHEMA;");
-        Value result = new ExpressRuleVisitor(new Test3Entity()).visit(parser.schema_decl());
+        Schema_declContext schema = getSchemaFor("SCHEMA entityAccess; ENTITY test3; check: LIST of INTEGER; WHERE valid: check[1]=1; END_ENTITY; END_SCHEMA;");
+        Value result = new ExpressRuleVisitor(new Test3Entity(), getEntityDeclarationTableFor(schema)).visit(schema);
         assert (Boolean)((Simple)result).value;
     }
 
     @Test
     public void testFunctions() throws Exception{
-        ExpressParser parser=getParserFor("SCHEMA functions; ENTITY test4; WHERE valid: 1=ABS(COS(PI)); END_ENTITY; END_SCHEMA;");
-        Value result = new ExpressRuleVisitor(new Test4Entity()).visit(parser.schema_decl());
+        Schema_declContext schema = getSchemaFor("SCHEMA functions; ENTITY test4; WHERE valid: 1=ABS(COS(PI)); END_ENTITY; END_SCHEMA;");
+        Value result = new ExpressRuleVisitor(new Test4Entity(), getEntityDeclarationTableFor(schema)).visit(schema);
         assert (Boolean)((Simple)result).value;
     }
 
-    @Test
-    public void testValidation() throws Exception {
+    public void testValidation() throws Exception { // TODO: integration tests
         ExpressDeclarationTableListener declarationTableListener = new ExpressDeclarationTableListener();
         ParseTreeWalker.DEFAULT.walk(declarationTableListener, getIfc4Parser().schema_decl());
         Ifc2x3tc1StepDeserializer deserializer = new Ifc2x3tc1StepDeserializer();
@@ -92,8 +79,8 @@ public class ExpressRuleVisitorTest {
         for (IfcRoot obj : model.getAllWithSubTypes(IfcRoot.class)) {
             ExpressRuleVisitor expressRuleVisitor = new ExpressRuleVisitor(new BIMserverEntityAdapter(obj));
             for (Class clz : obj.getClass().getClasses()) {
-                ExpressParser.Entity_declContext entity_decl = declarationTableListener.entityDeclarations.get(clz.getSimpleName().toLowerCase());
-                expressRuleVisitor.visitEntity_decl(entity_decl);
+                Entity_declContext entity_decl = declarationTableListener.entityDeclarations.get(clz.getSimpleName().toLowerCase());
+                expressRuleVisitor.visit(entity_decl);
                 // obj.eClass().getEStructuralFeature(attributeName);
             }
         }
@@ -107,69 +94,83 @@ public class ExpressRuleVisitorTest {
     @Test
     public void testResultAggregation(){}
 
+    private ExpressParser getIfc4Parser() throws IOException {
+        InputStream schema = getClass().getClassLoader().getResourceAsStream("IFC4_ADD2.exp");
+        ExpressLexer lexer = new ExpressLexer(new ANTLRInputStream(IOUtils.toString(schema).toLowerCase()));
+        CommonTokenStream tokens = new CommonTokenStream(lexer);
+        return new ExpressParser(tokens);
+    }
+
+    private Schema_declContext getSchemaFor(String expressCode) throws IOException {
+        ExpressLexer lexer = new ExpressLexer(new ANTLRInputStream(expressCode.toLowerCase()));
+        CommonTokenStream tokens = new CommonTokenStream(lexer);
+        return new ExpressParser(tokens).schema_decl();
+    }
+
+    private Map<String, Entity_declContext> getEntityDeclarationTableFor(Schema_declContext schema) {
+        Map<String, Entity_declContext> entityTable = new HashMap<String, Entity_declContext>();
+        for (ExpressParser.DeclarationContext declaration : schema.schema_body().declaration()){
+            Entity_declContext entityDeclaration = declaration.entity_decl();
+            entityTable.put(entityDeclaration.entity_head().IDENT().getText(), entityDeclaration);
+        }
+        return entityTable;
+    }
+
     private abstract class TestEntity implements EntityAdapter {
+        protected Map<String, Value> attributes = new HashMap<String, Value>();
+        String expressClassName;
+
         @Override
-        public Collection<String> getTypes() { return null; }
+        public Value resolveReference(String refName) {
+            assert attributes.containsKey(refName);
+            return attributes.get(refName);
+        }
+
+        @Override
+        public String getExpressClassName() {
+            return expressClassName;
+        }
 
         @Override
         public Collection<Entity> getUsages(String type, String attribute) { return null; }
+
+        @Override
+        public Collection<String> getTypes() {
+            return Arrays.asList(expressClassName);
+        }
     }
 
     private class Test1Entity extends TestEntity {
-        @Override
-        public Value resolveReference(String refName) {
-            assert "check".equals(refName);
-            return new Simple(true);
+        private Test1Entity(){
+            super();
+            expressClassName="test1";
+            attributes.put("check", new Simple(true));
         }
-
-        @Override
-        public String getExpressClassName() {
-            return "test1";
-        }
-
     }
 
     private class Test2Entity extends TestEntity {
-
-        @Override
-        public Value resolveReference(String refName) {
-            assert "ref".equals(refName);
-            return new Entity(new Test1Entity());
-        }
-
-        @Override
-        public String getExpressClassName() {
-            return "test2";
+        private Test2Entity(){
+            super();
+            expressClassName = "test2";
+            attributes.put("ref", new Entity(new Test1Entity()));
         }
     }
 
     private class Test3Entity extends TestEntity {
-
-        @Override
-        public Value resolveReference(String refName) {
-            assert "check".equals(refName);
-            return new Aggregate(Arrays.asList(0, 1, 3));
-        }
-
-        @Override
-        public String getExpressClassName() {
-            return "test3";
+        private Test3Entity(){
+            super();
+            expressClassName = "test3";
+            attributes.put("check", new Aggregate(Arrays.asList(0, 1, 3)));
         }
     }
     private class Test4Entity extends TestEntity {
-
-        @Override
-        public Value resolveReference(String refName) {
-            if("check2".equals(refName)) return new Simple(2.);
-            else {
-                assert ("check1".equals(refName));
-                return new Simple(-2.);
-            }
+        private Test4Entity(){
+            super();
+            expressClassName = "test4";
+            attributes.put("check2", new Simple(2.));
+            attributes.put("check1", new Simple(-2.));
         }
 
-        @Override
-        public String getExpressClassName() {
-            return "test4";
-        }
     }
 }
+

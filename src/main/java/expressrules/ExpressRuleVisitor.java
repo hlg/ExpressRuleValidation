@@ -2,17 +2,24 @@ package expressrules;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Stack;
 
 public class ExpressRuleVisitor extends ExpressBaseVisitor<Value> {
 
     private EntityAdapter obj;
     private Value qualifierScope ;
+    private Map<String, ExpressParser.Entity_declContext> entityDeclarations;
 
     private Stack<Aggregate> stack = new Stack<Aggregate>();
 
     public ExpressRuleVisitor(EntityAdapter obj) {
         this.obj = obj;
+    }
+
+    public ExpressRuleVisitor(EntityAdapter obj, Map<String, ExpressParser.Entity_declContext> entityDeclarations) {
+        this.obj = obj;
+        this.entityDeclarations = entityDeclarations;
     }
 
     @Override
@@ -23,7 +30,20 @@ public class ExpressRuleVisitor extends ExpressBaseVisitor<Value> {
     @Override
     public Value visitSchema_body(ExpressParser.Schema_bodyContext ctx) {
         log("found " + ctx.declaration().size() + " declarations");
-        return visitChildren(ctx);
+        if(obj!=null) {
+            // TODO check rules in all entity declarations of object under validation, can also take them from decl table
+            // TODO check rules of all types that are used for attributes of the entity
+            // TODO plus function declarations, they are in decl table  (type declarations needed?)
+            // no subtype constraints or procudure declarations in IFC4
+            boolean isValid = true;
+            for(String superType : obj.getTypes()){
+                Value validationResult = visit(entityDeclarations.get(superType));
+                isValid = isValid && ((Simple) validationResult).getBoolean();
+            }
+            return new Simple(isValid);
+        } else {
+            return visitChildren(ctx);
+        }
     }
 
     private void log(String s) {
@@ -33,17 +53,7 @@ public class ExpressRuleVisitor extends ExpressBaseVisitor<Value> {
     @Override
     public Value visitDeclaration(ExpressParser.DeclarationContext ctx) {
         // entity_decl |  type_decl |  subtype_constraint_decl |  function_decl |  procedure_decl ;
-        // TODO check rules in all entity declarations of object under validation, can also take them from decl table
-        // TODO check rules of all types that are used for attributes of the entity
-        // TODO plus function declarations, they are in decl table  (type declarations needed?)
-        // no subtype constraints or procudure declarations in IFC4
-        if(obj!=null) {
-            boolean entityDeclWithObjClass = ctx.entity_decl().entity_head().IDENT().getText().equals(obj.getExpressClassName());
-            return entityDeclWithObjClass ? visit(ctx.entity_decl()) : null;
-        } else {
-            return visitChildren(ctx);
-        }
-
+        return ctx.entity_decl()!=null ? visit(ctx.entity_decl()) : null ;
     }
 
     @Override
@@ -54,14 +64,15 @@ public class ExpressRuleVisitor extends ExpressBaseVisitor<Value> {
 
     @Override
     public Value visitEntity_body(ExpressParser.Entity_bodyContext ctx) {
-        return visit(ctx.where_clause());
+        return ctx.where_clause()!=null ? visit(ctx.where_clause()) : null;
     }
 
     @Override
     public Value visitWhere_clause(ExpressParser.Where_clauseContext ctx) {
         boolean valid = true;
         for (ExpressParser.Domain_ruleContext domainRuleContext : ctx.domain_rule()){
-            valid = valid && ((Simple)visit(domainRuleContext)).getBoolean();
+            Simple validationResult = (Simple) visit(domainRuleContext);
+            valid = valid && validationResult.getBoolean();
 
         }
         return new Simple(valid);
@@ -151,6 +162,7 @@ public class ExpressRuleVisitor extends ExpressBaseVisitor<Value> {
     public Value visitPrimary(ExpressParser.PrimaryContext ctx) {
         // primary : literal | qualifiable_factor qualifier*;
         if(ctx.literal()!= null) return visit(ctx.literal());
+        if(obj== null) return new Simple(0.);     // for testing IFC4 coverage
         qualifierScope = new Entity(obj);
         qualifierScope = visit(ctx.qualifiable_factor());
         for (ExpressParser.QualifierContext qualifier : ctx.qualifier()){
