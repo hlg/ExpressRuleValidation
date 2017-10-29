@@ -1,5 +1,10 @@
 package expressrules;
 
+import org.bimserver.emf.IdEObject;
+import org.bimserver.models.ifc4.Ifc4Factory;
+import org.bimserver.models.ifc4.Ifc4Package;
+import org.eclipse.emf.ecore.*;
+
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -10,6 +15,7 @@ public class ExpressRuleVisitor extends ExpressBaseVisitor<Value> {
     private EntityAdapter obj;
     private Value qualifierScope ;
     private Map<String, ExpressParser.Entity_declContext> entityDeclarations;
+    private Map<String, List<String>> enumerationTypeDeclarations;
 
     private Stack<Aggregate> stack = new Stack<Aggregate>();
 
@@ -17,9 +23,10 @@ public class ExpressRuleVisitor extends ExpressBaseVisitor<Value> {
         this.obj = obj;
     }
 
-    public ExpressRuleVisitor(EntityAdapter obj, Map<String, ExpressParser.Entity_declContext> entityDeclarations) {
+    public ExpressRuleVisitor(EntityAdapter obj, Map<String, ExpressParser.Entity_declContext> entityDeclarations, Map<String, List<String>> enumerationTypeDeclarations) {
         this.obj = obj;
         this.entityDeclarations = entityDeclarations;
+        this.enumerationTypeDeclarations = enumerationTypeDeclarations;
     }
 
     @Override
@@ -31,13 +38,12 @@ public class ExpressRuleVisitor extends ExpressBaseVisitor<Value> {
     public Value visitSchema_body(ExpressParser.Schema_bodyContext ctx) {
         log("found " + ctx.declaration().size() + " declarations");
         if(obj!=null) {
-            // TODO check rules in all entity declarations of object under validation, can also take them from decl table
-            // TODO check rules of all types that are used for attributes of the entity
+            // TODO check rules of all types that are used for attributes of the entity?
             // TODO plus function declarations, they are in decl table  (type declarations needed?)
             // no subtype constraints or procudure declarations in IFC4
             boolean isValid = true;
             for(String superType : obj.getTypes()){
-                Value validationResult = visit(entityDeclarations.get(superType));
+                Value validationResult = (entityDeclarations.containsKey(superType))? visit(entityDeclarations.get(superType)): new Simple(true);
                 isValid = isValid && ((Simple) validationResult).getBoolean();
             }
             return new Simple(isValid);
@@ -64,7 +70,7 @@ public class ExpressRuleVisitor extends ExpressBaseVisitor<Value> {
 
     @Override
     public Value visitEntity_body(ExpressParser.Entity_bodyContext ctx) {
-        return ctx.where_clause()!=null ? visit(ctx.where_clause()) : null;
+        return ctx.where_clause()!=null ? visit(ctx.where_clause()) : new Simple(true);
     }
 
     @Override
@@ -82,7 +88,9 @@ public class ExpressRuleVisitor extends ExpressBaseVisitor<Value> {
     public Value visitDomain_rule(ExpressParser.Domain_ruleContext ctx) {
         String ruleName = ctx.label().getText(); // for logging, otherwise delete this method
         log("checking rule: " + ruleName);
-        return visit(ctx.logical_expression());
+        Value result = visit(ctx.logical_expression());
+        log(ruleName + (((Simple)result).getBoolean()? " valid" : " error"));
+        return result;
     }
 
     @Override
@@ -117,13 +125,14 @@ public class ExpressRuleVisitor extends ExpressBaseVisitor<Value> {
 
     @Override
     public Value visitSimple_expression(ExpressParser.Simple_expressionContext ctx) {
+        log("evaluating simple expression: " + ctx.getText());
         Value result = visit(ctx.term(0));
-        log("checking simple expression: " + ctx.getText());
         assert ctx.term().size() == ctx.add_like_op().size() +1;
         for(int i=0; i<ctx.add_like_op().size(); i++){
             if( ctx.add_like_op(i).MINUS()!=null ){ result = result.subtract(visit(ctx.term(i + 1))); }
             else if( ctx.add_like_op(i).PLUS()!=null ){ result = result.add(visit(ctx.term(i + 1))); }
-            // TODO  'or' | 'xor'
+            else if ("or".equals(ctx.getText().toLowerCase())) {result = result.or(visit(ctx.term(i+1))); }
+            else if ("xor".equals(ctx.getText().toLowerCase())) { result = result.xor(visit(ctx.term(i+1))); }
         }
         return result;
     }
@@ -133,10 +142,15 @@ public class ExpressRuleVisitor extends ExpressBaseVisitor<Value> {
         Value result = visitFactor(ctx.factor(0));
         assert ctx.factor().size() == ctx.multiplication_like_op().size()+1;
         for(int i=0; i<ctx.multiplication_like_op().size(); i++) {
-            if (ctx.multiplication_like_op(i).getText().equals("*")) {
-                result = result.multiply(visit(ctx.factor(i + 1)));
-            }
-            else if (ctx.multiplication_like_op(i).getText().equals("/")) {result.divide(visit(ctx.factor(i + 1)));}
+            ExpressParser.Multiplication_like_opContext operator = ctx.multiplication_like_op(i);
+            String operatorTxt = ctx.multiplication_like_op(i).getText().toLowerCase();
+            Value operand = visit(ctx.factor(i + 1));
+            if (operator.STAR()!= null) {  result = result.multiply(operand); }
+            else if (operator.DIVSIGN()!=null) {result = result.divide(operand);}
+            else if (operatorTxt.equals("div")){ result = result.intDiv(operand);}
+            else if (operatorTxt.equals("mod")){ result = result.modulo(operand);}
+            else if (operatorTxt.equals("and")){ result = result.and(operand);}
+            else if (operator.DOUBLEBAR()!=null){ result = result.combine(operand); }  // complex entity constructor
             // TODO 'div' | 'mod' | 'and' | DOUBLEBAR
         }
         return result;
@@ -145,7 +159,18 @@ public class ExpressRuleVisitor extends ExpressBaseVisitor<Value> {
     @Override
     public Value visitSimple_factor(ExpressParser.Simple_factorContext ctx) {
         // aggregate_initializer | interval | query_expression | (unary_op? ((LPAREN expression RPAREN) | primary)) | entity_constructor | enumeration_reference ;
-        return ctx.primary()!= null ? visit(ctx.primary()) : null;  // TODO alternatives
+        if (ctx.expression() != null) {
+            if (ctx.unary_op()!= null) {
+                if (ctx.unary_op().MINUS()!= null) return new Simple(0.).subtract(visit(ctx.expression()));
+                if (ctx.unary_op().PLUS() != null) return new Simple(0.).add(visit(ctx.expression()));
+                if ("not".equals(ctx.unary_op().getText().toLowerCase())) return new Simple(!((Simple)visit(ctx.expression())).getBoolean());
+            }
+            return visit(ctx.expression());
+        }
+        if (ctx.primary()!= null) return visit(ctx.primary());
+        if (ctx.aggregate_initializer()!=null) return visit(ctx.aggregate_initializer());
+
+        return null; // TODO alternatives
     }
 
     @Override
@@ -163,6 +188,14 @@ public class ExpressRuleVisitor extends ExpressBaseVisitor<Value> {
         // primary : literal | qualifiable_factor qualifier*;
         if(ctx.literal()!= null) return visit(ctx.literal());
         if(obj== null) return new Simple(0.);     // for testing IFC4 coverage
+        ExpressParser.Attribute_refContext attribute_ref = ctx.qualifiable_factor().attribute_ref();
+        if(attribute_ref!=null && enumerationTypeDeclarations.containsKey(attribute_ref.IDENT().getText())){
+            assert(ctx.qualifier().size()==1);
+            assert(ctx.qualifier(0).attribute_qualifier()!=null);
+            String enumValue = ctx.qualifier(0).attribute_qualifier().attribute_ref().IDENT().getText();
+            assert(enumerationTypeDeclarations.get(attribute_ref.IDENT().getText()).contains(enumValue));
+            return new Simple(enumValue);
+        }
         qualifierScope = new Entity(obj);
         qualifierScope = visit(ctx.qualifiable_factor());
         for (ExpressParser.QualifierContext qualifier : ctx.qualifier()){
@@ -179,9 +212,9 @@ public class ExpressRuleVisitor extends ExpressBaseVisitor<Value> {
 
     @Override
     public Value visitBuilt_in_constant(ExpressParser.Built_in_constantContext ctx) {
-        if("const_e".equals(ctx.getText())) return new Simple(Math.E);
-        else if ("pi".equals(ctx.getText())) return new Simple(Math.PI);
-        else if ("self".equals(ctx.getText())) return null;
+        if("const_e".equals(ctx.getText().toLowerCase())) return new Simple(Math.E);
+        else if ("pi".equals(ctx.getText().toLowerCase())) return new Simple(Math.PI);
+        else if ("self".equals(ctx.getText().toLowerCase())) return null;
         else if (ctx.STAR()!=null || ctx.QUESTION() != null) log("found * or ? constant, currently unhandled"); return null;
     }
 
@@ -194,6 +227,7 @@ public class ExpressRuleVisitor extends ExpressBaseVisitor<Value> {
     @Override
     public Value visitQualifiable_factor(ExpressParser.Qualifiable_factorContext ctx) {
         // attribute_ref | constant_factor | function_call | population | general_ref    // no custom constants in IFC4
+        // TODO general_ref or population? or further up at qualifiable factor, function_call is recognized ok with at least one param
         return visitChildren(ctx);
     }
 
@@ -274,7 +308,7 @@ public class ExpressRuleVisitor extends ExpressBaseVisitor<Value> {
     @Override
     public Value visitAttribute_ref(ExpressParser.Attribute_refContext ctx) {
         Value resolved = qualifierScope.resolveRef(ctx.IDENT().getText());
-        log("resolved reference " + ctx.IDENT().getText() + " - result = " + resolved.toString());
+        log("resolved reference " + ctx.IDENT().getText() + " = " + resolved.toString());
         return resolved;
     }
 

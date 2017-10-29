@@ -96,6 +96,36 @@ public class Entity extends Value {
         throw new WrongTypeError();
     }
 
+    @Override
+    public Value or(Value visit) {
+        throw new WrongTypeError();
+    }
+
+    @Override
+    public Value xor(Value visit) {
+        throw new WrongTypeError();
+    }
+
+    @Override
+    public Value intDiv(Value visit) {
+        throw new WrongTypeError();
+    }
+
+    @Override
+    public Value combine(Value operand) {
+        return null; // TODO complex entity constructor
+    }
+
+    @Override
+    public Value modulo(Value operand) {
+        throw new WrongTypeError();
+    }
+
+    @Override
+    public Value and(Value operand) {
+        throw new WrongTypeError();
+    }
+
     public Collection<String> getTypes() {
         return value.getTypes();
     }

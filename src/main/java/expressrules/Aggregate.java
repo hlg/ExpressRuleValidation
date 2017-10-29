@@ -105,7 +105,37 @@ public class Aggregate extends Value {
         return (s==e) ?  value.get(s) : new Aggregate(value.subList(s,e));
     }
 
+    @Override
+    public Value or(Value visit) {
+        throw new WrongTypeError();
+    }
+
+    @Override
+    public Value xor(Value visit) {
+        throw  new WrongTypeError();
+    }
+
+    @Override
+    public Value intDiv(Value visit) {
+        throw new WrongTypeError();
+    }
+
+    @Override
+    public Value combine(Value operand) {
+        throw new WrongTypeError();
+    }
+
+    @Override
+    public Value modulo(Value operand) {
+        throw new WrongTypeError();
+    }
+
+    @Override
+    public Value and(Value operand) {
+        throw new WrongTypeError();
+    }
+
     public void addValue(Value value) {
-        this.value.add(value);
+        throw new WrongTypeError();
     }
 }

@@ -121,6 +121,39 @@ public class Simple extends Value implements Comparable<Simple>  {
         throw new WrongTypeError();
     }
 
+    @Override
+    public Value or(Value other) {
+        return new Simple(this.getBoolean() || ((Simple)other).getBoolean());
+    }
+
+    @Override
+    public Value xor(Value other) {
+        boolean thisBoolean = this.getBoolean();
+        boolean otherBoolean = ((Simple) other).getBoolean();
+        return new Simple((thisBoolean && !otherBoolean) || (!thisBoolean && otherBoolean));
+    }
+
+    @Override
+    public Value intDiv(Value other) {
+        assertBothDouble(other);
+        return new Simple(this.getIntegerValue()/((Simple)other).getIntegerValue());
+    }
+
+    @Override
+    public Value combine(Value other) {
+        throw new WrongTypeError();
+    }
+
+    @Override
+    public Value modulo(Value other) {
+        return new Simple(this.getIntegerValue()%((Simple)other).getIntegerValue());
+    }
+
+    @Override
+    public Value and(Value other) {
+        return new Simple(this.getBoolean() && ((Simple)other).getBoolean());
+    }
+
     public boolean isDouble() {
         return value instanceof Double;
     }

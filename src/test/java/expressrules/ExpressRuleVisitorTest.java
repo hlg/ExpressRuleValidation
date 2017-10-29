@@ -8,7 +8,7 @@ import org.bimserver.emf.PackageMetaData;
 import org.bimserver.emf.Schema;
 import org.bimserver.ifc.step.deserializer.Ifc2x3tc1StepDeserializer;
 import org.bimserver.models.ifc2x3tc1.Ifc2x3tc1Package;
-import org.bimserver.models.ifc4.IfcRoot;
+import org.bimserver.models.ifc4.*;
 import org.junit.Test;
 
 import java.io.*;
@@ -21,16 +21,6 @@ import expressrules.ExpressParser.Entity_declContext;
 public class ExpressRuleVisitorTest {
 
     @Test
-    public void testIfc4Coverage() throws Exception {
-        new ExpressRuleVisitor(null).visit(getIfc4Parser().schema_decl());
-    }
-
-    @Test
-    public void testDeclarationTableListener() throws Exception {
-        ParseTreeWalker.DEFAULT.walk(new ExpressDeclarationTableListener(), getIfc4Parser().schema_decl());
-    }
-
-    @Test
     public void testSimpleExpression() throws Exception {
         Schema_declContext schema = getSchemaFor("SCHEMA expressions; ENTITY dummy; WHERE valid: 1+1*3=4; END_ENTITY; END_SCHEMA;");
         Value result = new ExpressRuleVisitor(null).visit(schema);
@@ -40,50 +30,29 @@ public class ExpressRuleVisitorTest {
     @Test
     public void testEntityAccessAttribute() throws Exception {
         Schema_declContext schema = getSchemaFor("SCHEMA entityAccess; ENTITY test1; check: BOOLEAN; WHERE valid: check=true; END_ENTITY; END_SCHEMA;");
-        Value result = new ExpressRuleVisitor(new Test1Entity(), getEntityDeclarationTableFor(schema)).visit(schema);
+        Value result = new ExpressRuleVisitor(new Test1Entity(), getEntityDeclarationTableFor(schema), new HashMap<String, List<String>>()).visit(schema);
         assert (Boolean)((Simple)result).value;
     }
 
     @Test
     public void testEntityAccessReference() throws Exception {
         Schema_declContext schema = getSchemaFor("SCHEMA entityAccess; ENTITY test1; check: BOOLEAN; END_ENTITY; ENTITY test2; ref: test; WHERE valid: ref.check=true; END_ENTITY; END_SCHEMA;");
-        Value result = new ExpressRuleVisitor(new Test2Entity(), getEntityDeclarationTableFor(schema)).visit(schema);
+        Value result = new ExpressRuleVisitor(new Test2Entity(), getEntityDeclarationTableFor(schema), new HashMap<String, List<String>>()).visit(schema);
         assert (Boolean)((Simple)result).value;
     }
 
     @Test
     public void testAggregateAccessIndex() throws Exception {
         Schema_declContext schema = getSchemaFor("SCHEMA entityAccess; ENTITY test3; check: LIST of INTEGER; WHERE valid: check[1]=1; END_ENTITY; END_SCHEMA;");
-        Value result = new ExpressRuleVisitor(new Test3Entity(), getEntityDeclarationTableFor(schema)).visit(schema);
+        Value result = new ExpressRuleVisitor(new Test3Entity(), getEntityDeclarationTableFor(schema), new HashMap<String, List<String>>()).visit(schema);
         assert (Boolean)((Simple)result).value;
     }
 
     @Test
     public void testFunctions() throws Exception{
         Schema_declContext schema = getSchemaFor("SCHEMA functions; ENTITY test4; WHERE valid: 1=ABS(COS(PI)); END_ENTITY; END_SCHEMA;");
-        Value result = new ExpressRuleVisitor(new Test4Entity(), getEntityDeclarationTableFor(schema)).visit(schema);
+        Value result = new ExpressRuleVisitor(new Test4Entity(), getEntityDeclarationTableFor(schema), new HashMap<String, List<String>>()).visit(schema);
         assert (Boolean)((Simple)result).value;
-    }
-
-    public void testValidation() throws Exception { // TODO: integration tests
-        ExpressDeclarationTableListener declarationTableListener = new ExpressDeclarationTableListener();
-        ParseTreeWalker.DEFAULT.walk(declarationTableListener, getIfc4Parser().schema_decl());
-        Ifc2x3tc1StepDeserializer deserializer = new Ifc2x3tc1StepDeserializer();
-        PackageMetaData packageMetaData = new PackageMetaData(Ifc2x3tc1Package.eINSTANCE, Schema.IFC2X3TC1, Paths.get("tmp"));
-        deserializer.init(packageMetaData);
-        File ifc = new File(getClass().getClassLoader().getResource("test.ifc").getFile());
-
-        byte[] bytes = "asdf".getBytes();
-        deserializer.read(new ByteArrayInputStream(bytes), "onthefly.ifc", bytes.length, null);
-        IfcModelInterface model = deserializer.read(ifc);
-        for (IfcRoot obj : model.getAllWithSubTypes(IfcRoot.class)) {
-            ExpressRuleVisitor expressRuleVisitor = new ExpressRuleVisitor(new BIMserverEntityAdapter(obj));
-            for (Class clz : obj.getClass().getClasses()) {
-                Entity_declContext entity_decl = declarationTableListener.entityDeclarations.get(clz.getSimpleName().toLowerCase());
-                expressRuleVisitor.visit(entity_decl);
-                // obj.eClass().getEStructuralFeature(attributeName);
-            }
-        }
     }
 
     @Test
@@ -93,13 +62,6 @@ public class ExpressRuleVisitorTest {
 
     @Test
     public void testResultAggregation(){}
-
-    private ExpressParser getIfc4Parser() throws IOException {
-        InputStream schema = getClass().getClassLoader().getResourceAsStream("IFC4_ADD2.exp");
-        ExpressLexer lexer = new ExpressLexer(new ANTLRInputStream(IOUtils.toString(schema).toLowerCase()));
-        CommonTokenStream tokens = new CommonTokenStream(lexer);
-        return new ExpressParser(tokens);
-    }
 
     private Schema_declContext getSchemaFor(String expressCode) throws IOException {
         ExpressLexer lexer = new ExpressLexer(new ANTLRInputStream(expressCode.toLowerCase()));

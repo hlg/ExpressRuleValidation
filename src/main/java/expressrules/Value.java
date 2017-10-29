@@ -39,11 +39,25 @@ public abstract class Value  {
         if(elem instanceof String || elem instanceof Boolean) return new Simple((Comparable)elem);
         if(elem instanceof Number) return new Simple(((Number)elem).doubleValue());
         if(elem instanceof EntityAdapter) return new Entity((EntityAdapter) elem);
-        throw new WrongTypeError(); //TODO something missing?
+        if(elem.getClass().isEnum()) return new Simple(((Enum) elem).name());  // TODO involve adapter?
+        // if(elem == null) return new Simple(null);
+        throw new WrongTypeError(elem.getClass().getName()); //TODO something missing?
     }
 
     public abstract Value resolveRef(String refName);
 
     public abstract Value resolveIndex(Value start, Value end);
+
+    public abstract Value or(Value visit);
+
+    public abstract Value xor(Value visit);
+
+    public abstract Value intDiv(Value visit);
+
+    public abstract Value combine(Value operand);
+
+    public abstract Value modulo(Value operand);
+
+    public abstract Value and(Value operand);
 }
 

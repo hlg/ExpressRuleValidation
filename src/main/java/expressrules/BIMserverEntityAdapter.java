@@ -36,9 +36,10 @@ public class BIMserverEntityAdapter implements EntityAdapter {
     @Override
     public Collection<String> getTypes() {
         Collection<String> result = new ArrayList<String>();
-        for ( EClass superType : entity.eClass().getESuperTypes()){
+        for ( EClass superType : entity.eClass().getEAllSuperTypes()){
             result.add(superType.getName());
         }
+        result.add(entity.eClass().getName());
         return result;
     }
 
