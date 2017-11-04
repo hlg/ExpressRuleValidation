@@ -37,7 +37,7 @@ public enum Functions {
     }, EXISTS(new Class[]{Value.class}) {
         @Override
         protected Value _evaluate(List<Value> parameters) {
-            return new Simple(parameters.get(0) != null);
+            return new Simple(parameters.get(0).getValue() != null);
         }
     }, EXP(new Class[]{Simple.class}) {
         @Override
@@ -107,7 +107,7 @@ public enum Functions {
     }, SIZEOF(new Class[]{Aggregate.class}) {
         @Override
         protected Value _evaluate(List<Value> parameters) {
-            return new Simple((double) ((Aggregate) parameters.get(0)).value.size());
+            return new Simple((double) (parameters.get(0).getValue()==null ? 0 :((Aggregate) parameters.get(0)).value.size()));
         }
     }, SQRT(new Class[]{Simple.class}) {
         @Override
@@ -159,9 +159,8 @@ public enum Functions {
         if(parameters.size()!= this.parameters.length) {
             System.out.println("wrong length of parameters for function " + this.name());
         }
-        if(parameters instanceof Simple)
         for(int i=0; i<parameters.size(); i++){
-          if(!this.parameters[i].isInstance(parameters.get(i))) throw new WrongTypeError();
+          if(!this.parameters[i].isInstance(parameters.get(i))) throw new WrongTypeError(this.parameters[i], parameters.get(i).getClass());
 
         }
         return _evaluate(parameters);

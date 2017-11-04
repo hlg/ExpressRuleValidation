@@ -126,6 +126,11 @@ public class Entity extends Value {
         throw new WrongTypeError();
     }
 
+    @Override
+    public Object getValue() {
+        return value;
+    }
+
     public Collection<String> getTypes() {
         return value.getTypes();
     }

@@ -41,7 +41,7 @@ public abstract class Value  {
         if(elem instanceof EntityAdapter) return new Entity((EntityAdapter) elem);
         if(elem.getClass().isEnum()) return new Simple(((Enum) elem).name());  // TODO involve adapter?
         // if(elem == null) return new Simple(null);
-        throw new WrongTypeError(elem.getClass().getName()); //TODO something missing?
+        throw new WrongTypeError("expecting Collection, String, Number, EntityAdapter, or enum, found "+ elem.getClass().getName()); //TODO something missing?
     }
 
     public abstract Value resolveRef(String refName);
@@ -59,5 +59,7 @@ public abstract class Value  {
     public abstract Value modulo(Value operand);
 
     public abstract Value and(Value operand);
+
+    public abstract Object getValue();
 }
 

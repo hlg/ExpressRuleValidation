@@ -1,18 +1,9 @@
 package expressrules;
 
-import org.antlr.v4.runtime.*;
-import org.antlr.v4.runtime.tree.ParseTreeWalker;
-import org.apache.commons.io.IOUtils;
-import org.bimserver.emf.IfcModelInterface;
-import org.bimserver.emf.PackageMetaData;
-import org.bimserver.emf.Schema;
-import org.bimserver.ifc.step.deserializer.Ifc2x3tc1StepDeserializer;
-import org.bimserver.models.ifc2x3tc1.Ifc2x3tc1Package;
-import org.bimserver.models.ifc4.*;
-import org.junit.Test;
+import org.antlr.v4.runtime.*
+import org.junit.Test
 
-import java.io.*;
-import java.nio.file.Paths;
+import java.io.*
 import java.util.*;
 
 import expressrules.ExpressParser.Schema_declContext;
@@ -30,35 +21,49 @@ public class ExpressRuleVisitorTest {
     @Test
     public void testEntityAccessAttribute() throws Exception {
         Schema_declContext schema = getSchemaFor("SCHEMA entityAccess; ENTITY test1; check: BOOLEAN; WHERE valid: check=true; END_ENTITY; END_SCHEMA;");
-        Value result = new ExpressRuleVisitor(new Test1Entity(), getEntityDeclarationTableFor(schema), new HashMap<String, List<String>>()).visit(schema);
+        def entity = [type:"test1", attributes:[ 'check':  new Simple(true)]] as TestEntity;
+        Value result = new ExpressRuleVisitor(entity, getEntityDeclarationTableFor(schema), new HashMap<String, List<String>>()).visit(schema);
         assert (Boolean)((Simple)result).value;
     }
 
     @Test
     public void testEntityAccessReference() throws Exception {
-        Schema_declContext schema = getSchemaFor("SCHEMA entityyAccess; ENTITY test1; check: BOOLEAN; END_ENTITY; ENTITY test2; ref: test; WHERE valid: ref.check=true; END_ENTITY; END_SCHEMA;");
-        Value result = new ExpressRuleVisitor(new Test2Entity(), getEntityDeclarationTableFor(schema), new HashMap<String, List<String>>()).visit(schema);
+        Schema_declContext schema = getSchemaFor("SCHEMA entityyAccess; ENTITY test1; check: BOOLEAN; END_ENTITY; ENTITY test2; ref: test1; WHERE valid: ref.check=true; END_ENTITY; END_SCHEMA;");
+        def entity1 = [type:"test1", attributes:['check': new Simple(true)]] as TestEntity;
+        def entity2 = [type:"test2", attributes:['ref': new Entity(entity1)]] as TestEntity;
+        Value result = new ExpressRuleVisitor(entity2, getEntityDeclarationTableFor(schema), new HashMap<String, List<String>>()).visit(schema);
         assert (Boolean)((Simple)result).value;
     }
 
     @Test
     public void testAggregateAccessIndex() throws Exception {
         Schema_declContext schema = getSchemaFor("SCHEMA entityAccess; ENTITY test3; check: LIST of INTEGER; WHERE valid: check[1]=1; END_ENTITY; END_SCHEMA;");
-        Value result = new ExpressRuleVisitor(new Test3Entity(), getEntityDeclarationTableFor(schema), new HashMap<String, List<String>>()).visit(schema);
+        def entity = [type:"test3", attributes:['check': new Aggregate(Arrays.asList(0, 1, 3))]] as TestEntity;
+        Value result = new ExpressRuleVisitor(entity, getEntityDeclarationTableFor(schema), new HashMap<String, List<String>>()).visit(schema);
         assert (Boolean)((Simple)result).value;
     }
 
     @Test
     public void testFunctions() throws Exception{
         Schema_declContext schema = getSchemaFor("SCHEMA functions; ENTITY test4; WHERE valid: 1=ABS(COS(PI)); END_ENTITY; END_SCHEMA;");
-        Value result = new ExpressRuleVisitor(new Test4Entity(), getEntityDeclarationTableFor(schema), new HashMap<String, List<String>>()).visit(schema);
+        def entity = [type:"test4", attributes:['check1': new Simple(2 as Double), 'check2': new Simple(-2 as Double)]] as TestEntity;
+        Value result = new ExpressRuleVisitor(entity, getEntityDeclarationTableFor(schema), new HashMap<String, List<String>>()).visit(schema);
         assert (Boolean)((Simple)result).value;
+    }
+
+    @Test
+    public void testFunctionsExists() throws Exception{
+        Schema_declContext schema = getSchemaFor("SCHEMA functions; ENTITY test6; undefined: INTEGER; WHERE valid: EXISTS(undefined); END_ENTITY; END_SCHEMA;");
+        def entity = [type:"test6", attributes:['undefined': new Simple(null)]] as TestEntity;
+        Value result = new ExpressRuleVisitor(entity, getEntityDeclarationTableFor(schema), new HashMap<String, List<String>>()).visit(schema);
+        assert !(Boolean)((Simple)result).value;
     }
 
     @Test
     public void testEnumReference() throws Exception{
         Schema_declContext schema = getSchemaFor("SCHEMA functions; TYPE names = ENUMERATION OF (ANNA, BOB, CHARLY); END_TYPE; ENTITY test5; name: names; WHERE valid: name=names.BOB; END_ENTITY; END_SCHEMA;");
-        Value result = new ExpressRuleVisitor(new Test5Entity(), [test5: schema.schema_body().declaration(1).entity_decl()], [names: ["ANNA", "BOB", "CHARLY"]]).visit(schema);
+        def entity = [type:'test5', attributes:['name': new Simple('BOB')]] as TestEntity;
+        Value result = new ExpressRuleVisitor(entity, [test5: schema.schema_body().declaration(1).entity_decl()], [names: ["ANNA", "BOB", "CHARLY"]]).visit(schema);
         assert ((Simple)result).getBoolean();
     }
 
@@ -85,9 +90,9 @@ public class ExpressRuleVisitorTest {
         return entityTable;
     }
 
-    private abstract class TestEntity implements EntityAdapter {
+    protected class TestEntity implements EntityAdapter {
         protected Map<String, Value> attributes = new HashMap<String, Value>();
-        String expressClassName;
+        String type;
 
         @Override
         public Value resolveReference(String refName) {
@@ -97,7 +102,7 @@ public class ExpressRuleVisitorTest {
 
         @Override
         public String getExpressClassName() {
-            return expressClassName;
+            return type;
         }
 
         @Override
@@ -105,49 +110,10 @@ public class ExpressRuleVisitorTest {
 
         @Override
         public Collection<String> getTypes() {
-            return Arrays.asList(expressClassName);
+            return Arrays.asList(type);
         }
     }
 
-    private class Test1Entity extends TestEntity {
-        private Test1Entity(){
-            super();
-            expressClassName="test1";
-            attributes.put("check", new Simple(true));
-        }
-    }
 
-    private class Test2Entity extends TestEntity {
-        private Test2Entity(){
-            super();
-            expressClassName = "test2";
-            attributes.put("ref", new Entity(new Test1Entity()));
-        }
-    }
-
-    private class Test3Entity extends TestEntity {
-        private Test3Entity(){
-            super();
-            expressClassName = "test3";
-            attributes.put("check", new Aggregate(Arrays.asList(0, 1, 3)));
-        }
-    }
-    private class Test4Entity extends TestEntity {
-        private Test4Entity(){
-            super();
-            expressClassName = "test4";
-            attributes.put("check2", new Simple(2 as double));
-            attributes.put("check1", new Simple(-2 as double));
-        }
-
-    }
-
-    private class Test5Entity extends TestEntity {
-        private Test5Entity(){
-            super();
-            expressClassName = "test5";
-            attributes.put("name", new Simple("BOB"));
-        }
-    }
 }
 

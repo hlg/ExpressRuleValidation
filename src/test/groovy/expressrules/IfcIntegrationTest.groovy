@@ -3,51 +3,86 @@ package expressrules
 import org.antlr.v4.runtime.CommonTokenStream
 import org.antlr.v4.runtime.tree.ParseTreeWalker
 import org.apache.commons.io.IOUtils
-import org.bimserver.emf.IfcModelInterface
-import org.bimserver.emf.PackageMetaData
-import org.bimserver.emf.Schema
-import org.bimserver.ifc.step.deserializer.Ifc2x3tc1StepDeserializer
-import org.bimserver.models.ifc2x3tc1.Ifc2x3tc1Package
 import org.bimserver.models.ifc4.Ifc4Factory
-import org.bimserver.models.ifc4.IfcCShapeProfileDef
-import org.bimserver.models.ifc4.IfcOccupant
 import org.bimserver.models.ifc4.IfcOccupantTypeEnum
-import org.bimserver.models.ifc4.IfcRoot
+import org.bimserver.models.ifc4.IfcSystemFurnitureElement
+import org.bimserver.models.ifc4.IfcSystemFurnitureElementTypeEnum
+import org.eclipse.emf.common.util.EList
 import org.junit.Test
-
-
-import java.nio.file.Paths
 
 public class IfcIntegrationTest {
 
     @Test
-    public void testIfc4Coverage() throws Exception {
-        new ExpressRuleVisitor(null).visit(getIfc4Parser().schema_decl());
-    }
-
-    @Test
     public void testDeclarationTableListener() throws Exception {
-        ParseTreeWalker.DEFAULT.walk(new ExpressDeclarationTableListener(), getIfc4Parser().schema_decl());
+        ExpressDeclarationTableListener declarationTables = getDeclarationTablesFor(getIfc4Parser().schema_decl());
+        assert declarationTables.entityDeclarations.size() == 776
+        assert declarationTables.functionDeclarations.size() == 47
     }
 
     @Test
-    public void testIfcObjects() throws Exception {
-        /*
-        IfcCShapeProfileDef profile = Ifc4Factory.eINSTANCE.createIfcCShapeProfileDef();
-        profile.with { depth =30; width =10; girth=5; wallThickness=1 }
-        EntityAdapter ifcObject = new BIMserverEntityAdapter(profile);
-        */
-
-        IfcCShapeProfileDef profile = [depth:30, width:10, girth:5, wallThickness:1] as IfcCShapeProfileDef;
-        IfcOccupant ifcOccupant =  Ifc4Factory.eINSTANCE.createIfcOccupant();
-        ifcOccupant.setPredefinedType(IfcOccupantTypeEnum.TENANT);
-        EntityAdapter ifcObject = new BIMserverEntityAdapter(ifcOccupant);
-
+    public void testValidIfcObjects() throws Exception {
         ExpressParser.Schema_declContext schema = getIfc4Parser().schema_decl();
+        ExpressDeclarationTableListener declarationTables = getDeclarationTablesFor(schema);
+        getValidIfcObjects().each{ EntityAdapter ifcAdapter ->
+            // 123 abstract out of 776 that is 653 concrete entity types
+            Value result = new ExpressRuleVisitor(ifcAdapter, declarationTables.entityDeclarations, declarationTables.enumerationTypeDeclarations).visit(schema);
+            assert(((Simple)result).getBoolean())
+        }
+    }
+    @Test
+    public void testSingleValidIfcObject() throws Exception{
+        Ifc4Factory ifc4Factory = Ifc4Factory.eINSTANCE
+        EntityAdapter entity = new BIMserverEntityAdapter(ifc4Factory.createIfcRelDefinesByType().with{
+            relatingType = ifc4Factory.createIfcSystemFurnitureElementType()
+            def furniture = ifc4Factory.createIfcSystemFurnitureElement().with {
+                predefinedType = IfcSystemFurnitureElementTypeEnum.USERDEFINED; delegate
+            } as IfcSystemFurnitureElement
+            relatedObjects.add(furniture)
+            furniture
+        } );
+        ExpressParser.Schema_declContext schema = getIfc4Parser().schema_decl();
+        ExpressDeclarationTableListener declarationTables = getDeclarationTablesFor(schema);
+        Value result = new ExpressRuleVisitor(entity, declarationTables.entityDeclarations, declarationTables.enumerationTypeDeclarations).visit(schema);
+        assert (((Simple)result).getBoolean())
+    }
+    @Test
+    public void testInvalidIfcObjects() throws Exception {
+        ExpressParser.Schema_declContext schema = getIfc4Parser().schema_decl();
+        ExpressDeclarationTableListener declarationTables = getDeclarationTablesFor(schema)
+        getInvalidIfcObjects().each{ EntityAdapter ifcAdapter ->
+            Value result = new ExpressRuleVisitor(ifcAdapter, declarationTables.entityDeclarations, declarationTables.enumerationTypeDeclarations).visit(schema);
+            assert(!((Simple)result).getBoolean())
+        }
+    }
+
+    private List<EntityAdapter> getValidIfcObjects() {
+        def ifc4Factory = Ifc4Factory.eINSTANCE
+        Arrays.asList(
+                ifc4Factory.createIfcCShapeProfileDef().with { depth = 30; width = 10; girth = 5; wallThickness = 1; delegate },
+                ifc4Factory.createIfcOccupant().with { predefinedType = IfcOccupantTypeEnum.TENANT; delegate },
+                ifc4Factory.createIfcRelDefinesByType().with{
+                    relatingType = ifc4Factory.createIfcSystemFurnitureElementType()
+                    def furniture = ifc4Factory.createIfcSystemFurnitureElement().with {
+                        predefinedType = IfcSystemFurnitureElementTypeEnum.USERDEFINED; delegate
+                    } as IfcSystemFurnitureElement
+                    relatedObjects.add(furniture)
+                    furniture
+                }
+        ).collect { new BIMserverEntityAdapter(it) }
+    }
+
+    private List<EntityAdapter> getInvalidIfcObjects() {
+        def ifc4Factory = Ifc4Factory.eINSTANCE
+        Arrays.asList(
+                ifc4Factory.createIfcCShapeProfileDef().with { depth = 30; width = 10; girth = 5; wallThickness = 7; delegate },
+                ifc4Factory.createIfcOccupant().with { predefinedType = IfcOccupantTypeEnum.USERDEFINED; delegate }
+        ).collect { new BIMserverEntityAdapter(it) }
+    }
+
+    private ExpressDeclarationTableListener getDeclarationTablesFor(ExpressParser.Schema_declContext schema) {
         ExpressDeclarationTableListener declarationTables = new ExpressDeclarationTableListener();
         ParseTreeWalker.DEFAULT.walk(declarationTables, schema);
-        Value result = new ExpressRuleVisitor(ifcObject, declarationTables.entityDeclarations, declarationTables.enumerationTypeDeclarations).visit(schema);
-        assert(((Simple)result).getBoolean())
+        declarationTables
     }
 
     private ExpressParser getIfc4Parser() throws IOException {
@@ -56,27 +91,6 @@ public class IfcIntegrationTest {
         ExpressLexer lexer = new ExpressLexer(stream); // .toLowerCase()
         CommonTokenStream tokens = new CommonTokenStream(lexer);
         return new ExpressParser(tokens);
-    }
-
-    public void testValidation() throws Exception { // TODO: integration tests
-        ExpressDeclarationTableListener declarationTableListener = new ExpressDeclarationTableListener();
-        ParseTreeWalker.DEFAULT.walk(declarationTableListener, getIfc4Parser().schema_decl());
-        Ifc2x3tc1StepDeserializer deserializer = new Ifc2x3tc1StepDeserializer();
-        PackageMetaData packageMetaData = new PackageMetaData(Ifc2x3tc1Package.eINSTANCE, Schema.IFC2X3TC1, Paths.get("tmp"));
-        deserializer.init(packageMetaData);
-        File ifc = new File(getClass().getClassLoader().getResource("test.ifc").getFile());
-
-        byte[] bytes = "asdf".getBytes();
-        deserializer.read(new ByteArrayInputStream(bytes), "onthefly.ifc", bytes.length, null);
-        IfcModelInterface model = deserializer.read(ifc);
-        for (IfcRoot obj : model.getAllWithSubTypes(IfcRoot.class)) {
-            ExpressRuleVisitor expressRuleVisitor = new ExpressRuleVisitor(new BIMserverEntityAdapter(obj));
-            for (Class clz : obj.getClass().getClasses()) {
-                ExpressParser.Entity_declContext entity_decl = declarationTableListener.entityDeclarations.get(clz.getSimpleName().toLowerCase());
-                expressRuleVisitor.visit(entity_decl);
-                // obj.eClass().getEStructuralFeature(attributeName);
-            }
-        }
     }
 
 

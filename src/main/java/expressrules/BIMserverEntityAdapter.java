@@ -1,6 +1,7 @@
 package expressrules;
 
 import org.bimserver.emf.IdEObject;
+import org.eclipse.emf.common.util.EList;
 import org.eclipse.emf.ecore.EClass;
 import org.eclipse.emf.ecore.EObject;
 import org.eclipse.emf.ecore.EStructuralFeature;
@@ -20,10 +21,22 @@ public class BIMserverEntityAdapter implements EntityAdapter {
     @Override
     public Value resolveReference(String refName) {
         EStructuralFeature feature = entity.eClass().getEStructuralFeature(refName);
+        if (!entity.eIsSet(feature)) return feature.isMany() ? new Aggregate(null) : new Simple(null);
         Object resolved = entity.eGet(feature, true);
         if((resolved instanceof IdEObject) && ((IdEObject)resolved).eClass().getEAnnotation("wrapped")!=null) {
             EStructuralFeature unwrap =  ((IdEObject)resolved).eClass().getEStructuralFeature("wrappedValue");
             resolved = ((IdEObject)resolved).eGet(unwrap, true);
+        }
+        if(feature.isMany()) {
+            if(IdEObject.class.isAssignableFrom(feature.getEGenericType().getERawType().getInstanceClass())){
+                Collection<EntityAdapter> adapters = new ArrayList<EntityAdapter>();
+                for (IdEObject entity : (Collection <IdEObject>) resolved){
+                    adapters.add(new BIMserverEntityAdapter(entity));
+                }
+                return Value.create(adapters);
+            }
+        } else if (resolved instanceof IdEObject){
+            return Value.create(new BIMserverEntityAdapter((IdEObject) resolved));
         }
         return Value.create(resolved);
     }

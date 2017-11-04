@@ -1,15 +1,18 @@
-package expressrules
+package expressrules;
 
-import org.antlr.v4.runtime.ANTLRInputStream
+import org.antlr.v4.runtime.ANTLRInputStream;
+
+import java.io.IOException;
+import java.io.InputStream;
 
 public class CaseInsensitiveANTLRInputStream extends ANTLRInputStream {
 
     public CaseInsensitiveANTLRInputStream(InputStream input) throws IOException {
-        super(input)
+        super(input) ;
     }
 
     public CaseInsensitiveANTLRInputStream(String input) {
-        super(input)
+        super(input);
     }
 
     @Override

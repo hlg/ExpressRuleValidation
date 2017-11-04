@@ -131,8 +131,8 @@ public class ExpressRuleVisitor extends ExpressBaseVisitor<Value> {
         for(int i=0; i<ctx.add_like_op().size(); i++){
             if( ctx.add_like_op(i).MINUS()!=null ){ result = result.subtract(visit(ctx.term(i + 1))); }
             else if( ctx.add_like_op(i).PLUS()!=null ){ result = result.add(visit(ctx.term(i + 1))); }
-            else if ("or".equals(ctx.getText().toLowerCase())) {result = result.or(visit(ctx.term(i+1))); }
-            else if ("xor".equals(ctx.getText().toLowerCase())) { result = result.xor(visit(ctx.term(i+1))); }
+            else if ("or".equals(ctx.add_like_op(i).getText().toLowerCase())) {result = result.or(visit(ctx.term(i+1))); }
+            else if ("xor".equals(ctx.add_like_op(i).getText().toLowerCase())) { result = result.xor(visit(ctx.term(i+1))); }
         }
         return result;
     }
@@ -308,7 +308,7 @@ public class ExpressRuleVisitor extends ExpressBaseVisitor<Value> {
     @Override
     public Value visitAttribute_ref(ExpressParser.Attribute_refContext ctx) {
         Value resolved = qualifierScope.resolveRef(ctx.IDENT().getText());
-        log("resolved reference " + ctx.IDENT().getText() + " = " + resolved.toString());
+        log("resolved reference " + ctx.IDENT().getText() + " = " + resolved);
         return resolved;
     }
 

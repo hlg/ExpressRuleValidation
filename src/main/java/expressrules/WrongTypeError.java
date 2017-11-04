@@ -4,7 +4,10 @@ public class WrongTypeError extends RuntimeException {
     WrongTypeError(){
         super();
     }
-    WrongTypeError(String actualType){
-        super(actualType);
+    WrongTypeError(String message){
+        super(message);
+    }
+    WrongTypeError(Class expected, Class found){
+        super("expecting "+expected.getName()+", found "+found.getName());
     }
 }

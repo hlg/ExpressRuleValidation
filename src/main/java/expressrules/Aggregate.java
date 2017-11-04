@@ -16,9 +16,12 @@ public class Aggregate extends Value {
     }
 
     public Aggregate(Collection collection) {
-        value = new ArrayList<Value>();
-        for(Object elem : collection){
-            value.add((elem instanceof Value) ? (Value) elem : Value.create(elem));
+        if(collection==null) value=null;
+        else {
+            value = new ArrayList<Value>();
+            for(Object elem : collection){
+                value.add((elem instanceof Value) ? (Value) elem : Value.create(elem));
+            }
         }
     }
 
@@ -133,6 +136,11 @@ public class Aggregate extends Value {
     @Override
     public Value and(Value operand) {
         throw new WrongTypeError();
+    }
+
+    @Override
+    public Object getValue() {
+        return value;
     }
 
     public void addValue(Value value) {
