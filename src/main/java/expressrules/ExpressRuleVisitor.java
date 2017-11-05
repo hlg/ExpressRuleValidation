@@ -1,14 +1,6 @@
 package expressrules;
 
-import org.bimserver.emf.IdEObject;
-import org.bimserver.models.ifc4.Ifc4Factory;
-import org.bimserver.models.ifc4.Ifc4Package;
-import org.eclipse.emf.ecore.*;
-
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.Stack;
+import java.util.*;
 
 public class ExpressRuleVisitor extends ExpressBaseVisitor<Value> {
 
@@ -16,8 +8,11 @@ public class ExpressRuleVisitor extends ExpressBaseVisitor<Value> {
     private Value qualifierScope ;
     private Map<String, ExpressParser.Entity_declContext> entityDeclarations;
     private Map<String, List<String>> enumerationTypeDeclarations;
+    private Map<String, ExpressParser.Function_declContext> functionDeclarations;
 
     private Stack<Aggregate> stack = new Stack<Aggregate>();
+    private Stack<Map<String, Value>> stackFrames = new Stack<Map<String, Value>>();
+    private boolean functionReturn = false;
 
     public ExpressRuleVisitor(EntityAdapter obj) {
         this.obj = obj;
@@ -27,6 +22,11 @@ public class ExpressRuleVisitor extends ExpressBaseVisitor<Value> {
         this.obj = obj;
         this.entityDeclarations = entityDeclarations;
         this.enumerationTypeDeclarations = enumerationTypeDeclarations;
+    }
+
+    public ExpressRuleVisitor(EntityAdapter obj, Map<String, ExpressParser.Entity_declContext> entityDeclarations, Map<String, List<String>> enumerationTypeDeclarations, Map<String, ExpressParser.Function_declContext> functionDeclarations){
+        this(obj, entityDeclarations, enumerationTypeDeclarations);
+        this.functionDeclarations = functionDeclarations;
     }
 
     @Override
@@ -131,7 +131,7 @@ public class ExpressRuleVisitor extends ExpressBaseVisitor<Value> {
         for(int i=0; i<ctx.add_like_op().size(); i++){
             if( ctx.add_like_op(i).MINUS()!=null ){ result = result.subtract(visit(ctx.term(i + 1))); }
             else if( ctx.add_like_op(i).PLUS()!=null ){ result = result.add(visit(ctx.term(i + 1))); }
-            else if ("or".equals(ctx.add_like_op(i).getText().toLowerCase())) {result = result.or(visit(ctx.term(i+1))); }
+            else if ("or".equals(ctx.add_like_op(i).getText().toLowerCase())) {result = result.or(visit(ctx.term(i + 1))); }
             else if ("xor".equals(ctx.add_like_op(i).getText().toLowerCase())) { result = result.xor(visit(ctx.term(i+1))); }
         }
         return result;
@@ -227,14 +227,72 @@ public class ExpressRuleVisitor extends ExpressBaseVisitor<Value> {
     @Override
     public Value visitQualifiable_factor(ExpressParser.Qualifiable_factorContext ctx) {
         // attribute_ref | constant_factor | function_call | population | general_ref    // no custom constants in IFC4
-        // TODO general_ref or population? or further up at qualifiable factor, function_call is recognized ok with at least one param
+        // general ref is parsed as attribute_ref and resolved there, population is not handled
         return visitChildren(ctx);
     }
 
     @Override
     public Value visitFunction_call(ExpressParser.Function_callContext ctx) {
         stack.push( (Aggregate) visit(ctx.actual_parameter_list()));
-        return visit(ctx.built_in_function()); // TODO function_ref
+        if(ctx.built_in_function()!=null) return visit(ctx.built_in_function());
+        return visit(ctx.function_ref());
+    }
+
+    @Override
+    public Value visitFunction_ref(ExpressParser.Function_refContext ctx) {
+        return visit(functionDeclarations.get(ctx.IDENT().getText()));
+    }
+
+    @Override
+    public Value visitFunction_decl(ExpressParser.Function_declContext ctx) {
+        log("entering custom function: "+ctx.function_head().function_id().IDENT().getText());
+        Aggregate parameters = stack.pop();
+        // assert parameters.value.size()==ctx.function_head().formal_parameter().sum{ it.parameter_id().size() }
+        int i = 0;
+        Map<String, Value> scope = new HashMap<String, Value>();
+        if (!stackFrames.empty()) scope.putAll(stackFrames.peek()); // theoretically, the stack could also contain declarations and there should be a global base stack frame with the function and entity type declarations
+        stackFrames.push(scope);
+        for (ExpressParser.Formal_parameterContext param : ctx.function_head().formal_parameter()){
+            for (ExpressParser.Parameter_idContext paramId: param.parameter_id()) {
+                scope.put(paramId.IDENT().getText(), parameters.value.get(i++));
+            }
+        }
+        Value result = new Simple(null);
+        for(ExpressParser.StmtContext stmt: ctx.stmt()){
+            result = visit(stmt);
+            if(functionReturn) break;
+        }
+        stackFrames.pop();
+        return result;
+    }
+
+    @Override
+    public Value visitStmt(ExpressParser.StmtContext ctx) {
+        //  | assignment_stmt | case_stmt | compound_stmt | escape_stmt |  if_stmt |  null_stmt |  procedure_call_stmt |  repeat_stmt |  skip_stmt
+        // done: alias_stmt, return_stmt,
+        return visitChildren(ctx);
+    }
+
+    @Override
+    public Value visitReturn_stmt(ExpressParser.Return_stmtContext ctx) {
+        functionReturn = true;
+        return visit(ctx.expression());
+    }
+
+    @Override
+    public Value visitAlias_stmt(ExpressParser.Alias_stmtContext ctx) {
+        throw new NotImplementedException("alias_stmt");
+    }
+
+    @Override
+    public Value visitAssignment_stmt(ExpressParser.Assignment_stmtContext ctx) {
+        qualifierScope = new Entity(obj);
+        qualifierScope = visit(ctx.expression());
+        for (ExpressParser.QualifierContext qualifier : ctx.qualifier()){
+            qualifierScope = visit(qualifier);
+        }
+        stackFrames.peek().put(ctx.general_ref().getText(), qualifierScope);
+        return new Simple(null); // return assigned value? spec does not say anything
     }
 
     @Override
@@ -251,11 +309,6 @@ public class ExpressRuleVisitor extends ExpressBaseVisitor<Value> {
         return Functions.valueOf(ctx.getText().toUpperCase()).evaluate(stack.pop().value);
     }
 
-
-    @Override
-    public Value visitFunction_ref(ExpressParser.Function_refContext ctx) {
-        return null; // TODO:
-    }
 
     @Override
     public Value visitVariable_ref(ExpressParser.Variable_refContext ctx) {
@@ -307,8 +360,13 @@ public class ExpressRuleVisitor extends ExpressBaseVisitor<Value> {
 
     @Override
     public Value visitAttribute_ref(ExpressParser.Attribute_refContext ctx) {
-        Value resolved = qualifierScope.resolveRef(ctx.IDENT().getText());
-        log("resolved reference " + ctx.IDENT().getText() + " = " + resolved);
+        // general_ref is parsed as attribute_ref and is handled here as well
+        String refLabel = ctx.IDENT().getText();
+        if(!stackFrames.isEmpty() && stackFrames.peek().containsKey(ctx.IDENT().getText())){
+            return stackFrames.peek().get(refLabel);
+        }
+        Value resolved = qualifierScope.resolveRef(refLabel);
+        log("resolved reference " + refLabel + " = " + resolved);
         return resolved;
     }
 

@@ -7,7 +7,9 @@ import java.io.*
 import java.util.*;
 
 import expressrules.ExpressParser.Schema_declContext;
-import expressrules.ExpressParser.Entity_declContext;
+import expressrules.ExpressParser.Entity_declContext
+
+import static expressrules.ExpressParser.*;
 
 public class ExpressRuleVisitorTest {
 
@@ -47,7 +49,7 @@ public class ExpressRuleVisitorTest {
     public void testFunctions() throws Exception{
         Schema_declContext schema = getSchemaFor("SCHEMA functions; ENTITY test4; WHERE valid: 1=ABS(COS(PI)); END_ENTITY; END_SCHEMA;");
         def entity = [type:"test4", attributes:['check1': new Simple(2 as Double), 'check2': new Simple(-2 as Double)]] as TestEntity;
-        Value result = new ExpressRuleVisitor(entity, getEntityDeclarationTableFor(schema), new HashMap<String, List<String>>()).visit(schema);
+        Value result = new ExpressRuleVisitor(entity, getEntityDeclarationTableFor(schema), [:]).visit(schema);
         assert (Boolean)((Simple)result).value;
     }
 
@@ -55,25 +57,25 @@ public class ExpressRuleVisitorTest {
     public void testFunctionsExists() throws Exception{
         Schema_declContext schema = getSchemaFor("SCHEMA functions; ENTITY test6; undefined: INTEGER; WHERE valid: EXISTS(undefined); END_ENTITY; END_SCHEMA;");
         def entity = [type:"test6", attributes:['undefined': new Simple(null)]] as TestEntity;
-        Value result = new ExpressRuleVisitor(entity, getEntityDeclarationTableFor(schema), new HashMap<String, List<String>>()).visit(schema);
+        Value result = new ExpressRuleVisitor(entity, getEntityDeclarationTableFor(schema), [:]).visit(schema);
         assert !(Boolean)((Simple)result).value;
     }
 
     @Test
     public void testEnumReference() throws Exception{
-        Schema_declContext schema = getSchemaFor("SCHEMA functions; TYPE names = ENUMERATION OF (ANNA, BOB, CHARLY); END_TYPE; ENTITY test5; name: names; WHERE valid: name=names.BOB; END_ENTITY; END_SCHEMA;");
+        Schema_declContext schema = getSchemaFor("SCHEMA enum; TYPE names = ENUMERATION OF (ANNA, BOB, CHARLY); END_TYPE; ENTITY test5; name: names; WHERE valid: name=names.BOB; END_ENTITY; END_SCHEMA;");
         def entity = [type:'test5', attributes:['name': new Simple('BOB')]] as TestEntity;
-        Value result = new ExpressRuleVisitor(entity, [test5: schema.schema_body().declaration(1).entity_decl()], [names: ["ANNA", "BOB", "CHARLY"]]).visit(schema);
+        Value result = new ExpressRuleVisitor(entity, getEntityDeclarationTableFor(schema), [names: ["ANNA", "BOB", "CHARLY"]]).visit(schema);
         assert ((Simple)result).getBoolean();
     }
 
     @Test
-    public void testCheckIfc4Scratch() throws Exception {
-
+    public void testSimpleFunctionRef() throws Exception{
+        Schema_declContext schema = getSchemaFor("Schema func; FUNCTION doubleValue (a: INTEGER) : INTEGER; RETURN (a*2); END_FUNCTION; ENTITY test; b: INTEGER; c: INTEGER; WHERE valid: b=doubleValue(c); END_ENTITY; END_SCHEMA;")
+        def entity = [type:'test', attributes: [b: new Simple(4 as Double), c: new Simple(2 as Double)]] as TestEntity;
+        Value result = new ExpressRuleVisitor(entity, getEntityDeclarationTableFor(schema), [:], getFunctionDeclarationTableFor(schema)).visit(schema)
+        assert ((Simple)result).getBoolean()
     }
-
-    @Test
-    public void testResultAggregation(){}
 
     private Schema_declContext getSchemaFor(String expressCode) throws IOException {
         ExpressLexer lexer = new ExpressLexer(new CaseInsensitiveANTLRInputStream(expressCode));
@@ -82,12 +84,19 @@ public class ExpressRuleVisitorTest {
     }
 
     private Map<String, Entity_declContext> getEntityDeclarationTableFor(Schema_declContext schema) {
-        Map<String, Entity_declContext> entityTable = new HashMap<String, Entity_declContext>();
-        for (ExpressParser.DeclarationContext declaration : schema.schema_body().declaration()){
-            Entity_declContext entityDeclaration = declaration.entity_decl();
-            entityTable.put(entityDeclaration.entity_head().IDENT().getText(), entityDeclaration);
+        schema.schema_body().declaration().findAll{ DeclarationContext declaration ->
+            declaration.entity_decl()!=null
+        }.collectEntries { DeclarationContext declaration ->
+            [declaration.entity_decl().entity_head().IDENT().getText(), declaration.entity_decl()]
         }
-        return entityTable;
+    }
+
+    private Map<String, Function_declContext> getFunctionDeclarationTableFor(Schema_declContext schema){
+        schema.schema_body().declaration().findAll{ DeclarationContext declaration ->
+            declaration.function_decl()!=null
+        }.collectEntries { DeclarationContext declaration ->
+            [declaration.function_decl().function_head().function_id().IDENT().getText(), declaration.function_decl()]
+        }
     }
 
     protected class TestEntity implements EntityAdapter {
