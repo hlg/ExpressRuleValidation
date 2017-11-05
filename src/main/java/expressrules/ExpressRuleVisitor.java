@@ -188,7 +188,6 @@ public class ExpressRuleVisitor extends ExpressBaseVisitor<Value> {
     public Value visitPrimary(ExpressParser.PrimaryContext ctx) {
         // primary : literal | qualifiable_factor qualifier*;
         if(ctx.literal()!= null) return visit(ctx.literal());
-        if(obj== null) return new Simple(0.);     // for testing IFC4 coverage
         ExpressParser.Attribute_refContext attribute_ref = ctx.qualifiable_factor().attribute_ref();
         if(attribute_ref!=null && enumerationTypeDeclarations.containsKey(attribute_ref.IDENT().getText())){
             assert(ctx.qualifier().size()==1);
@@ -236,7 +235,9 @@ public class ExpressRuleVisitor extends ExpressBaseVisitor<Value> {
     public Value visitFunction_call(ExpressParser.Function_callContext ctx) {
         stack.push( ctx.actual_parameter_list() != null ?  (Aggregate) visit(ctx.actual_parameter_list()): new Aggregate());
         if(ctx.built_in_function()!=null) return visit(ctx.built_in_function());
-        return visit(ctx.function_ref());
+        Value result = visit(ctx.function_ref());
+        functionReturn = false;
+        return result;
     }
 
     @Override
@@ -268,6 +269,8 @@ public class ExpressRuleVisitor extends ExpressBaseVisitor<Value> {
         return result;
     }
 
+
+
     @Override
     public Value visitAlgorithm_head(ExpressParser.Algorithm_headContext ctx) {
         // declaration* constant_decl? local_decl?
@@ -293,9 +296,23 @@ public class ExpressRuleVisitor extends ExpressBaseVisitor<Value> {
 
     @Override
     public Value visitStmt(ExpressParser.StmtContext ctx) {
-        //  | assignment_stmt | case_stmt | compound_stmt | escape_stmt |  if_stmt |  null_stmt |  procedure_call_stmt |  repeat_stmt |  skip_stmt
-        // done: alias_stmt, return_stmt,
+        // case_stmt |  | escape_stmt |  if_stmt |  procedure_call_stmt |  repeat_stmt | skip_stmt
+        // done: alias_stmt, return_stmt, assignment_stmt,  null_stmt, compound_stmt
         return visitChildren(ctx);
+    }
+
+    @Override
+    public Value visitCompound_stmt(Compound_stmtContext ctx) {
+        Value result = new Simple(null);
+        for (StmtContext stmt : ctx.stmt()){
+            if(!functionReturn) result = visit(stmt);
+        }
+        return result;
+    }
+
+    @Override
+    public Value visitNull_stmt(Null_stmtContext ctx) {
+        return new Simple(null);
     }
 
     @Override

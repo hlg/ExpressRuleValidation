@@ -15,74 +15,89 @@ public class ExpressRuleVisitorTest {
 
     @Test
     public void testSimpleExpression() throws Exception {
-        Schema_declContext schema = getSchemaFor("SCHEMA expressions; ENTITY dummy; WHERE valid: 1+1*3=4; END_ENTITY; END_SCHEMA;");
-        Value result = new ExpressRuleVisitor(null).visit(schema);
-        assert (Boolean)((Simple)result).value;
+        def schema = 'ENTITY dummy; WHERE valid: 1+1*3=4; END_ENTITY;'
+        assert checkEntityAgainstSchema(null, schema);
     }
 
     @Test
     public void testEntityAccessAttribute() throws Exception {
-        Schema_declContext schema = getSchemaFor("SCHEMA entityAccess; ENTITY test1; check: BOOLEAN; WHERE valid: check=true; END_ENTITY; END_SCHEMA;");
+        def schema = 'ENTITY test1; check: BOOLEAN; WHERE valid: check=true; END_ENTITY;';
         def entity = [type:"test1", attributes:[ 'check':  new Simple(true)]] as TestEntity;
-        Value result = new ExpressRuleVisitor(entity, getEntityDeclarationTableFor(schema), new HashMap<String, List<String>>()).visit(schema);
-        assert (Boolean)((Simple)result).value;
+        assert checkEntityAgainstSchema(entity, schema);
     }
 
     @Test
     public void testEntityAccessReference() throws Exception {
-        Schema_declContext schema = getSchemaFor("SCHEMA entityyAccess; ENTITY test1; check: BOOLEAN; END_ENTITY; ENTITY test2; ref: test1; WHERE valid: ref.check=true; END_ENTITY; END_SCHEMA;");
+        def schema = """
+            ENTITY test1; check: BOOLEAN; END_ENTITY;
+            ENTITY test2; ref: test1; WHERE valid: ref.check=true; END_ENTITY;
+            """
         def entity1 = [type:"test1", attributes:['check': new Simple(true)]] as TestEntity;
         def entity2 = [type:"test2", attributes:['ref': new Entity(entity1)]] as TestEntity;
-        Value result = new ExpressRuleVisitor(entity2, getEntityDeclarationTableFor(schema), new HashMap<String, List<String>>()).visit(schema);
-        assert (Boolean)((Simple)result).value;
+        assert checkEntityAgainstSchema(entity2, schema);
     }
 
     @Test
     public void testAggregateAccessIndex() throws Exception {
-        Schema_declContext schema = getSchemaFor("SCHEMA entityAccess; ENTITY test3; check: LIST of INTEGER; WHERE valid: check[1]=1; END_ENTITY; END_SCHEMA;");
-        def entity = [type:"test3", attributes:['check': new Aggregate(Arrays.asList(0, 1, 3))]] as TestEntity;
-        Value result = new ExpressRuleVisitor(entity, getEntityDeclarationTableFor(schema), new HashMap<String, List<String>>()).visit(schema);
-        assert (Boolean)((Simple)result).value;
+        def schema = 'ENTITY test3; check: LIST of INTEGER; WHERE valid: check[1]=1; END_ENTITY;'
+        def entity = [type:"test3", attributes:['check': new Aggregate(Arrays.asList(0, 1, 3))]] as TestEntity
+        assert checkEntityAgainstSchema(entity, schema);
     }
 
     @Test
     public void testFunctions() throws Exception{
-        Schema_declContext schema = getSchemaFor("SCHEMA functions; ENTITY test4; WHERE valid: 1=ABS(COS(PI)); END_ENTITY; END_SCHEMA;");
-        def entity = [type:"test4", attributes:['check1': new Simple(2 as Double), 'check2': new Simple(-2 as Double)]] as TestEntity;
-        Value result = new ExpressRuleVisitor(entity, getEntityDeclarationTableFor(schema), [:]).visit(schema);
-        assert (Boolean)((Simple)result).value;
+        def schema = 'ENTITY test4; WHERE valid: 1=ABS(COS(PI)); END_ENTITY;'
+        assert checkEntityAgainstSchema(null, schema);
     }
 
     @Test
     public void testFunctionsExists() throws Exception{
-        Schema_declContext schema = getSchemaFor("SCHEMA functions; ENTITY test6; undefined: INTEGER; WHERE valid: EXISTS(undefined); END_ENTITY; END_SCHEMA;");
-        def entity = [type:"test6", attributes:['undefined': new Simple(null)]] as TestEntity;
-        Value result = new ExpressRuleVisitor(entity, getEntityDeclarationTableFor(schema), [:]).visit(schema);
-        assert !(Boolean)((Simple)result).value;
+        def schema = 'ENTITY test6; undefined: INTEGER; WHERE valid: EXISTS(undefined); END_ENTITY;'
+        def entity = [type:"test6", attributes:['undefined': new Simple("tricky")]] as TestEntity;
+        assert checkEntityAgainstSchema(entity, schema);
     }
 
     @Test
     public void testEnumReference() throws Exception{
-        Schema_declContext schema = getSchemaFor("SCHEMA enum; TYPE names = ENUMERATION OF (ANNA, BOB, CHARLY); END_TYPE; ENTITY test5; name: names; WHERE valid: name=names.BOB; END_ENTITY; END_SCHEMA;");
+        def schema = """
+            TYPE names = ENUMERATION OF (ANNA, BOB, CHARLY); END_TYPE;
+            ENTITY test5; name: names; WHERE valid: name=names.BOB; END_ENTITY;
+            """
         def entity = [type:'test5', attributes:['name': new Simple('BOB')]] as TestEntity;
-        Value result = new ExpressRuleVisitor(entity, getEntityDeclarationTableFor(schema), [names: ["ANNA", "BOB", "CHARLY"]]).visit(schema);
-        assert ((Simple)result).getBoolean();
+        assert checkEntityAgainstSchema(entity, schema);
     }
 
     @Test
     public void testSimpleFunctionRef() throws Exception{
-        Schema_declContext schema = getSchemaFor("Schema func; FUNCTION doubleValue (a: INTEGER) : INTEGER; RETURN (a*2); END_FUNCTION; ENTITY test; b: INTEGER; c: INTEGER; WHERE valid: b=doubleValue(doubleValue(c-1)+doubleValue(c)); END_ENTITY; END_SCHEMA;")
-        def entity = [type:'test', attributes: [b: new Simple(12 as Double), c: new Simple(2 as Double)]] as TestEntity;
-        Value result = new ExpressRuleVisitor(entity, getEntityDeclarationTableFor(schema), [:], getFunctionDeclarationTableFor(schema)).visit(schema)
-        assert ((Simple)result).getBoolean()
+        def schema = """
+            FUNCTION doubleValue (a: INTEGER) : INTEGER; RETURN (a*2); END_FUNCTION;
+            ENTITY dummy; WHERE valid: 12=doubleValue(doubleValue(2-1)+doubleValue(2)); END_ENTITY;
+            """
+        assert checkEntityAgainstSchema(null, schema)
     }
 
     @Test
     public void testLocalVariables() throws Exception{
-        Schema_declContext schema = getSchemaFor("Schema localVar; FUNCTION localVar : INTEGER; LOCAL b: INTEGER := 3**2+2*7; END_LOCAL; RETURN (b); END_FUNCTION; ENTITY test; WHERE valid: 23=localVar(); END_ENTITY; END_SCHEMA;")
-        def entity = [type:'test'] as TestEntity
-        Value result = new ExpressRuleVisitor(entity, getEntityDeclarationTableFor(schema), [:], getFunctionDeclarationTableFor(schema)).visit(schema)
-        assert ((Simple) result).getBoolean();
+        def schema = """
+            FUNCTION localVar : INTEGER; LOCAL b: INTEGER := 3**2+2*7; END_LOCAL; RETURN (b); END_FUNCTION;
+            ENTITY dummy; WHERE valid: 23=localVar(); END_ENTITY;
+            """
+       assert checkEntityAgainstSchema(null, schema);
+    }
+
+    @Test
+    public void testPrematureReturn() throws Exception{
+        def schema ="""
+           FUNCTION early : INTEGER; RETURN (true); RETURN (false); END_FUNCTION;
+           ENTITY dummy; WHERE valid: early(); END_ENTITY;
+           """
+        assert checkEntityAgainstSchema(null, schema);
+    }
+
+    private boolean checkEntityAgainstSchema(TestEntity entity, String schemaBody){
+        Schema_declContext schema = getSchemaFor('SCHEMA test; '+schemaBody+'END_SCHEMA;')
+        Value result = new ExpressRuleVisitor(entity, getEntityDeclarationTableFor(schema), getEnumTypeDeclarationTableFor(schema), getFunctionDeclarationTableFor(schema)).visit(schema)
+        return  ((Simple) result).getBoolean();
     }
 
     private Schema_declContext getSchemaFor(String expressCode) throws IOException {
@@ -106,6 +121,15 @@ public class ExpressRuleVisitorTest {
             [declaration.function_decl().function_head().function_id().IDENT().getText(), declaration.function_decl()]
         }
     }
+
+    private Map<String, Type_declContext> getEnumTypeDeclarationTableFor(Schema_declContext schema) {
+        schema.schema_body().declaration().findAll{ DeclarationContext declaration ->
+            declaration.type_decl()!= null
+        }.collectEntries{ DeclarationContext declaration ->
+            [declaration.type_decl().IDENT().getText(), declaration.type_decl().underlying_type().constructed_types().enumeration_type().enumeration_items().enumeration_id().collect {it.IDENT().getText()}]
+        }
+    }
+
 
     protected class TestEntity implements EntityAdapter {
         protected Map<String, Value> attributes = new HashMap<String, Value>();
