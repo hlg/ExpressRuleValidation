@@ -1,6 +1,7 @@
 package expressrules;
 
 import java.util.*;
+import expressrules.ExpressParser.*;
 
 public class ExpressRuleVisitor extends ExpressBaseVisitor<Value> {
 
@@ -233,7 +234,7 @@ public class ExpressRuleVisitor extends ExpressBaseVisitor<Value> {
 
     @Override
     public Value visitFunction_call(ExpressParser.Function_callContext ctx) {
-        stack.push( (Aggregate) visit(ctx.actual_parameter_list()));
+        stack.push( ctx.actual_parameter_list() != null ?  (Aggregate) visit(ctx.actual_parameter_list()): new Aggregate());
         if(ctx.built_in_function()!=null) return visit(ctx.built_in_function());
         return visit(ctx.function_ref());
     }
@@ -252,6 +253,7 @@ public class ExpressRuleVisitor extends ExpressBaseVisitor<Value> {
         Map<String, Value> scope = new HashMap<String, Value>();
         if (!stackFrames.empty()) scope.putAll(stackFrames.peek()); // theoretically, the stack could also contain declarations and there should be a global base stack frame with the function and entity type declarations
         stackFrames.push(scope);
+        visit(ctx.algorithm_head());
         for (ExpressParser.Formal_parameterContext param : ctx.function_head().formal_parameter()){
             for (ExpressParser.Parameter_idContext paramId: param.parameter_id()) {
                 scope.put(paramId.IDENT().getText(), parameters.value.get(i++));
@@ -264,6 +266,29 @@ public class ExpressRuleVisitor extends ExpressBaseVisitor<Value> {
         }
         stackFrames.pop();
         return result;
+    }
+
+    @Override
+    public Value visitAlgorithm_head(ExpressParser.Algorithm_headContext ctx) {
+        // declaration* constant_decl? local_decl?
+        if(!ctx.declaration().isEmpty()) throw new NotImplementedException("local (entity) declarations in functions not implemented" );
+        return visitChildren(ctx);
+    }
+
+    @Override
+    public Value visitConstant_decl(ExpressParser.Constant_declContext ctx) {
+        throw new NotImplementedException("constant declarations not implemented");
+    }
+
+    @Override
+    public Value visitLocal_decl(Local_declContext ctx) {
+        for (Local_variableContext localVar : ctx.local_variable()){
+            Value initialValue = localVar.expression() != null ? visit(localVar.expression()) : new Simple(null);
+            for(Variable_idContext varName: localVar.variable_id()) {
+                stackFrames.peek().put(varName.IDENT().getText(), initialValue);
+            }
+        }
+        return null;
     }
 
     @Override

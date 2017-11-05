@@ -71,10 +71,18 @@ public class ExpressRuleVisitorTest {
 
     @Test
     public void testSimpleFunctionRef() throws Exception{
-        Schema_declContext schema = getSchemaFor("Schema func; FUNCTION doubleValue (a: INTEGER) : INTEGER; RETURN (a*2); END_FUNCTION; ENTITY test; b: INTEGER; c: INTEGER; WHERE valid: b=doubleValue(c); END_ENTITY; END_SCHEMA;")
-        def entity = [type:'test', attributes: [b: new Simple(4 as Double), c: new Simple(2 as Double)]] as TestEntity;
+        Schema_declContext schema = getSchemaFor("Schema func; FUNCTION doubleValue (a: INTEGER) : INTEGER; RETURN (a*2); END_FUNCTION; ENTITY test; b: INTEGER; c: INTEGER; WHERE valid: b=doubleValue(doubleValue(c-1)+doubleValue(c)); END_ENTITY; END_SCHEMA;")
+        def entity = [type:'test', attributes: [b: new Simple(12 as Double), c: new Simple(2 as Double)]] as TestEntity;
         Value result = new ExpressRuleVisitor(entity, getEntityDeclarationTableFor(schema), [:], getFunctionDeclarationTableFor(schema)).visit(schema)
         assert ((Simple)result).getBoolean()
+    }
+
+    @Test
+    public void testLocalVariables() throws Exception{
+        Schema_declContext schema = getSchemaFor("Schema localVar; FUNCTION localVar : INTEGER; LOCAL b: INTEGER := 3**2+2*7; END_LOCAL; RETURN (b); END_FUNCTION; ENTITY test; WHERE valid: 23=localVar(); END_ENTITY; END_SCHEMA;")
+        def entity = [type:'test'] as TestEntity
+        Value result = new ExpressRuleVisitor(entity, getEntityDeclarationTableFor(schema), [:], getFunctionDeclarationTableFor(schema)).visit(schema)
+        assert ((Simple) result).getBoolean();
     }
 
     private Schema_declContext getSchemaFor(String expressCode) throws IOException {

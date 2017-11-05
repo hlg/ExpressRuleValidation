@@ -225,10 +225,10 @@ attribute_ref : IDENT ;
 constant_factor : built_in_constant | constant_ref ;
 built_in_constant : 'const_e' | 'pi' | 'self' | QUESTION | STAR ;
 constant_ref : IDENT ;
-function_call : (built_in_function | function_ref ) actual_parameter_list? ;  // TODO: this seems to be wrong, parans from parameter list should go here, except when parameterless calls are not allowed or ar done without parans
+function_call : (built_in_function | function_ref ) LPAREN actual_parameter_list? RPAREN ;  // TODO: this seems to be wrong, parans from parameter list should go here, except when parameterless calls are not allowed or ar done without parans
 built_in_function : 'abs' | 'acos' | 'asin' | 'atan' | 'blength' | 'cos' | 'exists' | 'exp' | 'format' | 'hibound' | 'hiindex' | 'length' | 'lobound' | 'loindex' | 'log' | 'log2' | 'log10' | 'nvl' | 'odd' | 'rolesof' | 'sin' | 'sizeof' | 'sqrt' | 'tan' | 'typeof' | 'usedin' | 'value' | 'value_in' | 'value_unique' ; 
 function_ref : IDENT ;
-actual_parameter_list : LPAREN parameter (COMMA parameter)* RPAREN;
+actual_parameter_list : parameter (COMMA parameter)*;
 parameter: expression;
 population: entity_ref ;
 general_ref : parameter_ref | variable_ref ;
@@ -260,7 +260,7 @@ escape_stmt : 'escape' SEMI ;
 if_stmt : 'if' logical_expression 'then' stmt stmt* else_clause? 'end_if' SEMI ;
 else_clause: 'else' stmt stmt* ;
 null_stmt : SEMI;
-procedure_call_stmt : (built_in_procedure | procedure_ref ) actual_parameter_list? SEMI;
+procedure_call_stmt : (built_in_procedure | procedure_ref ) LPAREN actual_parameter_list? RPAREN SEMI;
 built_in_procedure : 'insert' | 'remove' ;
 procedure_ref : IDENT ;
 repeat_stmt : 'repeat' repeat_control SEMI stmt stmt* 'end_repeat' SEMI ;
