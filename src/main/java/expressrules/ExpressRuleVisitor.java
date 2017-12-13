@@ -1,6 +1,8 @@
 package expressrules;
 
 import java.util.*;
+import java.util.function.Predicate;
+
 import expressrules.ExpressParser.*;
 
 public class ExpressRuleVisitor extends ExpressBaseVisitor<Value> {
@@ -12,8 +14,9 @@ public class ExpressRuleVisitor extends ExpressBaseVisitor<Value> {
     private Map<String, ExpressParser.Function_declContext> functionDeclarations;
 
     private Stack<Aggregate> stack = new Stack<Aggregate>();
-    private Stack<Map<String, Value>> stackFrames = new Stack<Map<String, Value>>();
-    private boolean functionReturn = false;
+    private LinkedList<Map<String, Value>> stackFrames = new LinkedList<Map<String, Value>>();
+    private boolean returnFromFunction = false;
+    private boolean escapeRepeatLoop = false;
 
     public ExpressRuleVisitor(EntityAdapter obj) {
         this.obj = obj;
@@ -152,7 +155,6 @@ public class ExpressRuleVisitor extends ExpressBaseVisitor<Value> {
             else if (operatorTxt.equals("mod")){ result = result.modulo(operand);}
             else if (operatorTxt.equals("and")){ result = result.and(operand);}
             else if (operator.DOUBLEBAR()!=null){ result = result.combine(operand); }  // complex entity constructor
-            // TODO 'div' | 'mod' | 'and' | DOUBLEBAR
         }
         return result;
     }
@@ -236,13 +238,15 @@ public class ExpressRuleVisitor extends ExpressBaseVisitor<Value> {
         stack.push( ctx.actual_parameter_list() != null ?  (Aggregate) visit(ctx.actual_parameter_list()): new Aggregate());
         if(ctx.built_in_function()!=null) return visit(ctx.built_in_function());
         Value result = visit(ctx.function_ref());
-        functionReturn = false;
         return result;
     }
 
     @Override
     public Value visitFunction_ref(ExpressParser.Function_refContext ctx) {
-        return visit(functionDeclarations.get(ctx.IDENT().getText()));
+        // procedure calls are parsed as function and would have to be handled here
+        Function_declContext function = functionDeclarations.get(ctx.IDENT().getText());
+        if(function==null) throw new NotImplementedException("function " + ctx.IDENT().getText() + " not found, might be a procedure reference which is currently not supported");
+        return visit(function);
     }
 
     @Override
@@ -251,25 +255,22 @@ public class ExpressRuleVisitor extends ExpressBaseVisitor<Value> {
         Aggregate parameters = stack.pop();
         // assert parameters.value.size()==ctx.function_head().formal_parameter().sum{ it.parameter_id().size() }
         int i = 0;
-        Map<String, Value> scope = new HashMap<String, Value>();
-        if (!stackFrames.empty()) scope.putAll(stackFrames.peek()); // theoretically, the stack could also contain declarations and there should be a global base stack frame with the function and entity type declarations
-        stackFrames.push(scope);
+        openNewScope();
         visit(ctx.algorithm_head());
-        for (ExpressParser.Formal_parameterContext param : ctx.function_head().formal_parameter()){
-            for (ExpressParser.Parameter_idContext paramId: param.parameter_id()) {
-                scope.put(paramId.IDENT().getText(), parameters.value.get(i++));
+        for (Formal_parameterContext param : ctx.function_head().formal_parameter()){
+            for (Parameter_idContext paramId: param.parameter_id()) {
+                stackFrames.peek().put(paramId.IDENT().getText(), parameters.value.get(i++));
             }
         }
         Value result = new Simple(null);
-        for(ExpressParser.StmtContext stmt: ctx.stmt()){
+        for(StmtContext stmt: ctx.stmt()){
             result = visit(stmt);
-            if(functionReturn) break;
+            if(returnFromFunction) break;
         }
         stackFrames.pop();
+        returnFromFunction = false;
         return result;
     }
-
-
 
     @Override
     public Value visitAlgorithm_head(ExpressParser.Algorithm_headContext ctx) {
@@ -296,16 +297,96 @@ public class ExpressRuleVisitor extends ExpressBaseVisitor<Value> {
 
     @Override
     public Value visitStmt(ExpressParser.StmtContext ctx) {
-        // case_stmt |  | escape_stmt |  if_stmt |  procedure_call_stmt |  repeat_stmt | skip_stmt
-        // done: alias_stmt, return_stmt, assignment_stmt,  null_stmt, compound_stmt
+        // todo: case_stmt |  | escape_stmt |
+        // not in IFC4: skip_stmt, procedure_call_stmt
+        // done: alias_stmt, return_stmt, assignment_stmt,  null_stmt, compound_stmt, if_stmt, repeat_stmt
         return visitChildren(ctx);
     }
 
     @Override
+    public Value visitRepeat_stmt(Repeat_stmtContext ctx) {
+        openNewScope();
+        Increment_controlContext incrementControl = ctx.repeat_control().increment_control();
+        assert (incrementControl !=null);  // not implemented - while and until controls not used in IFC4
+        String varName = incrementControl.variable_id().IDENT().getText();
+        Simple bound_1 = (Simple) visit(incrementControl.bound_1());
+        Simple bound_2 = (Simple) visit(incrementControl.bound_2());
+        assert incrementControl.increment() == null;  // not implementd - no custom increment used in IFC4
+        for(stackFrames.peek().put(varName, bound_1); ((Simple) stackFrames.peek().get(varName).le(bound_2)).getBoolean(); stackFrames.peek().put(varName, stackFrames.peek().get(varName).add(new Simple(1.0))) ){
+            Value result = executeStatementsWhileNoReturnNoEscape(ctx.stmt());  // the result originates from the return expression
+            if(returnFromFunction) return result;
+            if(escapeRepeatLoop) break;
+        }
+        escapeRepeatLoop = false;
+        stackFrames.pop();
+        return new Simple(null);
+    }
+
+    private void openNewScope() {
+        stackFrames.push(new HashMap<String, Value>());
+    }
+
+    private boolean setVariable(final String identifier, Value value){
+        Optional<Map<String, Value>> scope = findScopeOf(identifier);
+        if(scope.isPresent()) scope.get().put(identifier, value);
+        return scope.isPresent();
+    }
+
+    private Value findVariable(final String identifier){
+        Optional<Map<String, Value>> scope = findScopeOf(identifier);
+        return scope.isPresent() ? scope.get().get(identifier) : null;
+    }
+
+    private Optional<Map<String, Value>> findScopeOf(final String identifier) {
+        return stackFrames.stream().filter(new Predicate<Map<String, Value>>() {
+                @Override
+                public boolean test(Map<String, Value> stringValueMap) {
+                    return stringValueMap.containsKey(identifier);
+                }
+            }).findFirst();
+    }
+
+    @Override
+    public Value visitEscape_stmt(Escape_stmtContext ctx) {
+        return super.visitEscape_stmt(ctx);
+    }
+
+    @Override
+    public Value visitSkip_stmt(Skip_stmtContext ctx) {
+        throw new NotImplementedException("skip statement not implemented (not used in IFC4)");
+    }
+
+    @Override
+    public Value visitIf_stmt(If_stmtContext ctx) {
+        return (((Simple) visit(ctx.logical_expression())).getBoolean()) ?
+                executeStatementsWhileNoReturn(ctx.stmt()) :
+                visit(ctx.else_clause());
+    }
+
+    @Override
+    public Value visitElse_clause(Else_clauseContext ctx) {
+        return executeStatementsWhileNoReturn(ctx.stmt());
+    }
+
+    @Override
     public Value visitCompound_stmt(Compound_stmtContext ctx) {
+        return executeStatementsWhileNoReturn(ctx.stmt());
+    }
+
+    private Value executeStatementsWhileNoReturn(List<StmtContext> statements) {
         Value result = new Simple(null);
-        for (StmtContext stmt : ctx.stmt()){
-            if(!functionReturn) result = visit(stmt);
+        for (StmtContext stmt : statements){
+            if(returnFromFunction) break;
+            result = visit(stmt);
+        }
+        return result;
+    }
+
+    private Value executeStatementsWhileNoReturnNoEscape(List<StmtContext> statements) {
+        Value result = new Simple(null);
+        for (StmtContext stmt : statements){
+            result = visit(stmt);
+            if(returnFromFunction || escapeRepeatLoop) break;
         }
         return result;
     }
@@ -317,7 +398,7 @@ public class ExpressRuleVisitor extends ExpressBaseVisitor<Value> {
 
     @Override
     public Value visitReturn_stmt(ExpressParser.Return_stmtContext ctx) {
-        functionReturn = true;
+        returnFromFunction = true;
         return visit(ctx.expression());
     }
 
@@ -333,7 +414,7 @@ public class ExpressRuleVisitor extends ExpressBaseVisitor<Value> {
         for (ExpressParser.QualifierContext qualifier : ctx.qualifier()){
             qualifierScope = visit(qualifier);
         }
-        stackFrames.peek().put(ctx.general_ref().getText(), qualifierScope);
+        setVariable(ctx.general_ref().getText(), qualifierScope);
         return new Simple(null); // return assigned value? spec does not say anything
     }
 
@@ -354,14 +435,18 @@ public class ExpressRuleVisitor extends ExpressBaseVisitor<Value> {
 
     @Override
     public Value visitVariable_ref(ExpressParser.Variable_refContext ctx) {
-        log("found variable ref " + ctx.IDENT().getText()); // TODO
-        return null;
+        // should never appear since this is a child of general_ref which is handled in attribute_ref
+        String identifier = ctx.IDENT().getText();
+        log("found variable ref " + identifier);
+        return findVariable(identifier);
     }
 
     @Override
     public Value visitParameter_ref(ExpressParser.Parameter_refContext ctx) {
-        log("found parameter ref " + ctx.IDENT().getText()); // TODO
-        return null;
+        // should never appear since this is a child of general_ref which is handled in attribute_ref
+        String identifier = ctx.IDENT().getText();
+        log("found parameter ref " + identifier);
+        return findVariable(identifier);
     }
 
     @Override
@@ -404,9 +489,8 @@ public class ExpressRuleVisitor extends ExpressBaseVisitor<Value> {
     public Value visitAttribute_ref(ExpressParser.Attribute_refContext ctx) {
         // general_ref is parsed as attribute_ref and is handled here as well
         String refLabel = ctx.IDENT().getText();
-        if(!stackFrames.isEmpty() && stackFrames.peek().containsKey(ctx.IDENT().getText())){
-            return stackFrames.peek().get(refLabel);
-        }
+        Value inScope = findVariable(refLabel);
+        if(inScope!=null) return inScope;
         Value resolved = qualifierScope.resolveRef(refLabel);
         log("resolved reference " + refLabel + " = " + resolved);
         return resolved;

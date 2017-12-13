@@ -82,7 +82,7 @@ public class ExpressRuleVisitorTest {
             FUNCTION localVar : INTEGER; LOCAL b: INTEGER := 3**2+2*7; END_LOCAL; RETURN (b); END_FUNCTION;
             ENTITY dummy; WHERE valid: 23=localVar(); END_ENTITY;
             """
-       assert checkEntityAgainstSchema(null, schema);
+       assert checkEntityAgainstSchema(null, schema)
     }
 
     @Test
@@ -91,8 +91,27 @@ public class ExpressRuleVisitorTest {
            FUNCTION early : INTEGER; RETURN (true); RETURN (false); END_FUNCTION;
            ENTITY dummy; WHERE valid: early(); END_ENTITY;
            """
-        assert checkEntityAgainstSchema(null, schema);
+        assert checkEntityAgainstSchema(null, schema)
     }
+
+    @Test
+    public void testIfThenElse() throws Exception{
+        def schema = """
+            FUNCTION conditional : STRING; IF (1=2) THEN RETURN ('wrong'); ELSE RETURN ('right'); END_IF; END_FUNCTION;
+            ENTITY dummy; WHERE valid: conditional()='right'; END_ENTITY;
+            """
+        assert checkEntityAgainstSchema(null, schema)
+    }
+
+    @Test
+    public void testRepeatIncrement() throws Exception {
+        def schema = """
+            FUNCTION countDown (a: INTEGER) : INTEGER; REPEAT i:=1 TO 10; a:=a-1; END_REPEAT; RETURN (a); END_FUNCTION;
+            ENTITY dummy; WHERE valid: countDown(10)=0; END_ENTITY;
+            """
+        assert checkEntityAgainstSchema(null, schema)
+    }
+
 
     private boolean checkEntityAgainstSchema(TestEntity entity, String schemaBody){
         Schema_declContext schema = getSchemaFor('SCHEMA test; '+schemaBody+'END_SCHEMA;')
